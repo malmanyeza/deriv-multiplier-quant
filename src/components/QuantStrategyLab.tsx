@@ -28,6 +28,7 @@ import {
   evaluateQuantSignal,
   runChronologicalWalkForward,
   type WalkForwardReport,
+  type QuantTimeframe,
 } from '../services/quantStrategyEngine';
 
 interface QuantStrategyLabProps {
@@ -77,7 +78,11 @@ const REGIME_BADGES: Record<
     className: 'regime-neutral',
   } as { label: string; className: string },
   CHAOS_GATED_OUT: {
-    label: 'CHAOS GATE ACTIVE (ATR > 0.65%)',
+    label: 'CHAOS GATE ACTIVE (HIGH ATR)',
+    className: 'regime-warn',
+  },
+  CHOP_GATE_ACTIVE: {
+    label: 'CHOP GATE ACTIVE (LOW ADX CHOP)',
     className: 'regime-warn',
   },
   CSPRNG_BLOCKED: {
@@ -104,6 +109,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
   onSellAtMarket,
   onStartLogin,
 }) => {
+  const [selectedTimeframe, setSelectedTimeframe] = useState<QuantTimeframe>('1h');
   const [candles1h, setCandles1h] = useState<CandlePoint[]>([]);
   const [loadingCandles, setLoadingCandles] = useState<boolean>(false);
   const [deepAuditLoading, setDeepAuditLoading] = useState<boolean>(false);
@@ -112,6 +118,9 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
   const [testFiring, setTestFiring] = useState<TradeDirection | null>(null);
   const [nextBarCountdown, setNextBarCountdown] = useState<string>('—');
   const [auditLogs, setAuditLogs] = useState<BotAuditEntry[]>([]);
+
+  const granularity =
+    selectedTimeframe === '5m' ? 300 : selectedTimeframe === '15m' ? 900 : 3600;
 
   const lastAutoActedBarTimeRef = useRef<number>(0);
 
@@ -128,12 +137,12 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     [],
   );
 
-  // Live 1-second countdown to the next 1h candle close (top of the hour XX:00:00)
+  // Live countdown to the next candle close for the selected timeframe
   useEffect(() => {
     const updateClock = () => {
       const nowSec = Math.floor(Date.now() / 1000);
-      const nextHourSec = Math.ceil((nowSec + 1) / 3600) * 3600;
-      const diff = Math.max(0, nextHourSec - nowSec);
+      const nextBarSec = Math.ceil((nowSec + 1) / granularity) * granularity;
+      const diff = Math.max(0, nextBarSec - nowSec);
       const mins = Math.floor(diff / 60);
       const secs = diff % 60;
       setNextBarCountdown(
@@ -143,10 +152,10 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     updateClock();
     const timer = window.setInterval(updateClock, 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [granularity]);
 
-  // Fetch initial 3,000 1h candles (~125 days) + stream live 1h OHLC for the active symbol
-  const loadMultiPage1hCandles = useCallback(
+  // Fetch initial candles + stream live OHLC for the active symbol & timeframe
+  const loadMultiPageCandles = useCallback(
     async (pagesToFetch: number) => {
       const isSocketReady =
         connectionStatus === 'ready_public' ||
@@ -170,7 +179,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
             {
               ticks_history: symbol,
               style: 'candles',
-              granularity: 3600,
+              granularity,
               count: 1000,
               end,
             },
@@ -196,7 +205,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         setDeepAuditLoading(false);
       }
     },
-    [socket, connectionStatus, connectionGeneration, symbol],
+    [socket, connectionStatus, connectionGeneration, symbol, granularity],
   );
 
   useEffect(() => {
@@ -206,7 +215,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     if (!isSocketReady || !symbol) return;
 
     let cancelled = false;
-    void loadMultiPage1hCandles(3);
+    void loadMultiPageCandles(3);
 
     const sub = socket.subscribe(
       {
@@ -214,7 +223,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         adjust_start_time: 1,
         count: 500,
         end: 'latest',
-        granularity: 3600,
+        granularity,
         style: 'candles',
       },
       {
@@ -260,7 +269,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       cancelled = true;
       sub.unsubscribe();
     };
-  }, [socket, connectionStatus, connectionGeneration, symbol, loadMultiPage1hCandles]);
+  }, [socket, connectionStatus, connectionGeneration, symbol, loadMultiPageCandles, granularity]);
 
   const [riskPct, setRiskPct] = useState<number>(0.01);
 
@@ -274,6 +283,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         positions,
         stakeLimits,
         riskPctOfBalance: riskPct,
+        timeframe: selectedTimeframe,
       }),
     [
       symbol,
@@ -283,6 +293,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       positions,
       stakeLimits,
       riskPct,
+      selectedTimeframe,
     ],
   );
 
@@ -506,7 +517,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         <div className="panel-title-row">
           <Bot size={16} className="accent-icon" aria-hidden="true" />
           <h2 className="panel-title">
-            Quant Strategy Lab &amp; Walk-Forward Engine (1h Multipliers)
+            Quant Strategy Lab &amp; Walk-Forward Engine ({selectedTimeframe.toUpperCase()} Multipliers)
           </h2>
           <span className={`regime-pill ${regimeBadge.className}`}>
             {regimeBadge.label}
@@ -518,14 +529,14 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
             type="button"
             className="btn btn-outline btn-xs"
             disabled={loadingCandles || deepAuditLoading}
-            onClick={() => void loadMultiPage1hCandles(9)}
-            title="Fetch up to 8,760 hourly candles (365 days) for full walk-forward validation"
+            onClick={() => void loadMultiPageCandles(9)}
+            title="Fetch candles for full walk-forward validation"
           >
             <RefreshCw size={12} aria-hidden="true" />
             <span>
               {deepAuditLoading
-                ? 'Running 365d Audit…'
-                : `Load 365d History (${walkForwardReport.daysCovered}d loaded)`}
+                ? 'Running Audit…'
+                : `Load Deep History (${walkForwardReport.daysCovered}d loaded)`}
             </span>
           </button>
 
@@ -556,32 +567,79 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
               className={`btn btn-xs ${
                 autoPilotArmed ? 'btn-rise' : 'btn-primary'
               }`}
-              disabled={!canArmAutoPilot || evaluation.isCsprng}
+              disabled={!canArmAutoPilot || (evaluation.isCsprng && selectedTimeframe === '1h')}
               onClick={() => {
                 const next = !autoPilotArmed;
                 setAutoPilotArmed(next);
                 appendLog(
                   'info',
                   next
-                    ? `Demo Auto-Pilot ARMED on ${symbol}. Watching 1h candle closes (next evaluation in ${nextBarCountdown}) with Quarter-Kelly 1R = ${evaluation.riskPlan.recommendedStake} ${currency}.`
+                    ? `Demo Auto-Pilot ARMED on ${symbol} [${selectedTimeframe.toUpperCase()}]. Watching candle closes (next evaluation in ${nextBarCountdown}) with Quarter-Kelly 1R = ${evaluation.riskPlan.recommendedStake} ${currency}.`
                     : 'Demo Auto-Pilot DISARMED.',
                 );
               }}
               title={
                 accountType !== 'demo'
                   ? 'Safety Lock: Switch to your Demo account in the top header to arm Auto-Pilot'
-                  : 'Toggle automated 1h closed-bar execution on Demo account'
+                  : `Toggle automated ${selectedTimeframe.toUpperCase()} closed-bar execution on Demo account`
               }
             >
               <Play size={12} aria-hidden="true" />
               <span>
                 {autoPilotArmed
-                  ? `Auto-Pilot ARMED (Next 1h Close: ${nextBarCountdown})`
+                  ? `Auto-Pilot ARMED (Next ${selectedTimeframe.toUpperCase()} Close: ${nextBarCountdown})`
                   : accountType === 'real'
                     ? 'Locked (Switch to Demo Account)'
-                    : 'Arm Demo Auto-Pilot'}
+                    : `Arm Demo Auto-Pilot (${selectedTimeframe.toUpperCase()})`}
               </span>
             </button>
+          )}
+        </div>
+      </div>
+
+      {/* Multi-Timeframe Execution & Circuit Breaker Ribbon */}
+      <div className="quant-tf-ribbon">
+        <div className="quant-tf-buttons">
+          <span className="quant-tf-tag">TIMEFRAME:</span>
+          <button
+            type="button"
+            className={`btn btn-xs ${selectedTimeframe === '1h' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setSelectedTimeframe('1h')}
+          >
+            1H Macro (Recommended)
+          </button>
+          <button
+            type="button"
+            className={`btn btn-xs ${selectedTimeframe === '15m' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setSelectedTimeframe('15m')}
+          >
+            15M Intraday Turbo
+          </button>
+          <button
+            type="button"
+            className={`btn btn-xs ${selectedTimeframe === '5m' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setSelectedTimeframe('5m')}
+          >
+            5M Micro Scalp
+          </button>
+        </div>
+
+        <div className="quant-circuit-breaker-container">
+          {evaluation.riskPlan.circuitBreakerTripped ? (
+            <span className="circuit-breaker-pill tripped" title={evaluation.riskPlan.circuitBreakerReason || ''}>
+              <AlertTriangle size={13} aria-hidden="true" />
+              <span>CIRCUIT BREAKER: {evaluation.riskPlan.circuitBreakerReason}</span>
+            </span>
+          ) : evaluation.riskPlan.throttledByDrawdown ? (
+            <span className="circuit-breaker-pill throttled">
+              <ShieldAlert size={13} aria-hidden="true" />
+              <span>STREAK THROTTLE: 50% Stake ({evaluation.riskPlan.consecutiveLosses} Losses in a row)</span>
+            </span>
+          ) : (
+            <span className="circuit-breaker-pill normal">
+              <CheckCircle2 size={13} aria-hidden="true" />
+              <span>CIRCUIT BREAKER: NORMAL (Streak: {evaluation.riskPlan.consecutiveLosses}/3 Losses)</span>
+            </span>
           )}
         </div>
       </div>

@@ -487,5 +487,82 @@ describe('Quant Strategy Engine (Chaos Gate, CSPRNG Block & Quarter-Kelly Risk)'
     expect(downPreview?.takeProfitPrice).toBeCloseTo(68579, 2);
     expect(downPreview?.lossPrice).toBeCloseTo(70329, 2);
   });
+
+  it('supports multi-timeframe signal evaluation and streak loss circuit breakers', () => {
+    // Generate 120 synthetic bars
+    const dummyBars = Array.from({ length: 120 }, (_, i) => ({
+      time: (1700000000 + i * 900) as UTCTimestamp,
+      open: 50000 + i * 10,
+      high: 50020 + i * 10,
+      low: 49990 + i * 10,
+      close: 50015 + i * 10,
+    }));
+
+    // 1. Evaluate with 15m timeframe
+    const eval15m = evaluateQuantSignal({
+      symbol: 'cryBTCUSD',
+      bars: dummyBars,
+      accountBalance: 1000,
+      positions: [],
+      timeframe: '15m',
+    });
+    expect(eval15m.riskPlan.timeframe).toBe('15m');
+    expect(eval15m.riskPlan.circuitBreakerTripped).toBe(false);
+
+    // 2. Evaluate with 2 consecutive losses -> throttles risk by 50%
+    const mockPositionsWith2Losses = [
+      {
+        contractId: 1,
+        underlyingSymbol: 'cryBTCUSD',
+        isSold: true,
+        buyPrice: 10,
+        profit: -10,
+        purchaseTime: Math.floor(Date.now() / 1000) - 300,
+      },
+      {
+        contractId: 2,
+        underlyingSymbol: 'cryBTCUSD',
+        isSold: true,
+        buyPrice: 10,
+        profit: -10,
+        purchaseTime: Math.floor(Date.now() / 1000) - 100,
+      },
+    ] as any;
+
+    const evalThrottled = evaluateQuantSignal({
+      symbol: 'cryBTCUSD',
+      bars: dummyBars,
+      accountBalance: 1000,
+      positions: mockPositionsWith2Losses,
+      timeframe: '15m',
+    });
+    expect(evalThrottled.riskPlan.consecutiveLosses).toBe(2);
+    expect(evalThrottled.riskPlan.throttledByDrawdown).toBe(true);
+
+    // 3. Evaluate with 3 consecutive losses -> trips circuit breaker
+    const mockPositionsWith3Losses = [
+      ...mockPositionsWith2Losses,
+      {
+        contractId: 3,
+        underlyingSymbol: 'cryBTCUSD',
+        isSold: true,
+        buyPrice: 10,
+        profit: -10,
+        purchaseTime: Math.floor(Date.now() / 1000) - 50,
+      },
+    ] as any;
+
+    const evalTripped = evaluateQuantSignal({
+      symbol: 'cryBTCUSD',
+      bars: dummyBars,
+      accountBalance: 1000,
+      positions: mockPositionsWith3Losses,
+      timeframe: '15m',
+    });
+    expect(evalTripped.riskPlan.consecutiveLosses).toBe(3);
+    expect(evalTripped.riskPlan.circuitBreakerTripped).toBe(true);
+    expect(evalTripped.riskPlan.circuitBreakerReason).toContain('3 consecutive losses');
+  });
 });
+
 

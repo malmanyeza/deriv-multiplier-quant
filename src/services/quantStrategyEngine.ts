@@ -2,11 +2,14 @@ import type { CandlePoint } from './chartFeed';
 import { isCsprngSyntheticSymbol } from './marketData';
 import type { NormalizedPosition, TradeDirection } from '../types/deriv';
 
+export type QuantTimeframe = '1h' | '15m' | '5m';
+
 export type QuantRegime =
   | 'TREND_EXPANSION'
   | 'RANGE_MEAN_REVERSION'
   | 'NEUTRAL_TRANSITION'
   | 'CHAOS_GATED_OUT'
+  | 'CHOP_GATE_ACTIVE'
   | 'CSPRNG_BLOCKED';
 
 export interface QuantIndicatorSnapshot {
@@ -30,6 +33,8 @@ export interface QuantRiskPlan {
   recommendedTakeProfit: number | null;
   recommendedStopLoss: null; // Uses Deriv's zero-slippage -100% stake Stop-Out floor (-1R)
   throttledByDrawdown: boolean;
+  consecutiveLosses: number;
+  timeframe: QuantTimeframe;
   dailyRealizedR: number;
   openRiskR: number;
   circuitBreakerTripped: boolean;
@@ -224,6 +229,7 @@ export function evaluateQuantSignal(params: {
   positions: NormalizedPosition[];
   stakeLimits?: { min?: number; max?: number };
   riskPctOfBalance?: number;
+  timeframe?: QuantTimeframe;
 }): QuantSignalEvaluation {
   const {
     symbol,
@@ -233,6 +239,7 @@ export function evaluateQuantSignal(params: {
     positions,
     stakeLimits,
     riskPctOfBalance = 0.0075,
+    timeframe = '1h',
   } = params;
   const isCsprng = isCsprngSyntheticSymbol(symbol, market);
   const profile = getSymbolStrategyProfile(symbol);
@@ -259,7 +266,16 @@ export function evaluateQuantSignal(params: {
     return acc + r;
   }, 0);
 
-  const throttledByDrawdown = symbolRecentClosed.length >= 5 && rollingSymbolR <= -5.0;
+  // Consecutive loss counter on this symbol
+  let consecutiveLosses = 0;
+  for (const p of symbolRecentClosed) {
+    if (p.profit < 0) consecutiveLosses++;
+    else if (p.profit > 0) break;
+  }
+
+  // Drawdown throttle: 50% risk reduction if symbol down -5R or after 2 consecutive losses
+  const throttledByDrawdown =
+    (symbolRecentClosed.length >= 5 && rollingSymbolR <= -5.0) || consecutiveLosses >= 2;
   const basePct = throttledByDrawdown ? riskPctOfBalance * 0.5 : riskPctOfBalance;
   const rawStake = accountBalance > 0 ? accountBalance * basePct : 10;
   const minStake = stakeLimits?.min ?? 1;
@@ -276,10 +292,13 @@ export function evaluateQuantSignal(params: {
   let circuitBreakerTripped = false;
   let circuitBreakerReason: string | null = null;
 
-  if (isCsprng) {
+  if (isCsprng && timeframe === '1h') {
     circuitBreakerTripped = true;
     circuitBreakerReason =
-      'CSPRNG Synthetic Index detected (ACF ≈ 0). Automated directional execution is disabled to protect against negative-EV house edge.';
+      'CSPRNG Synthetic Index detected (ACF ≈ 0). Automated 1H macro execution is disabled to protect against negative-EV house edge.';
+  } else if (consecutiveLosses >= 3) {
+    circuitBreakerTripped = true;
+    circuitBreakerReason = `3 consecutive losses on ${symbol}. Dynamic cooldown circuit breaker active to prevent chop drawdown.`;
   } else if (dailyRealizedR <= -3.0) {
     circuitBreakerTripped = true;
     circuitBreakerReason = `Daily -3.0R circuit breaker reached (${dailyRealizedR.toFixed(2)}R today). Pausing new entries.`;
@@ -296,23 +315,33 @@ export function evaluateQuantSignal(params: {
     recommendedTakeProfit: null,
     recommendedStopLoss: null,
     throttledByDrawdown,
+    consecutiveLosses,
+    timeframe,
     dailyRealizedR: Number(dailyRealizedR.toFixed(2)),
     openRiskR: openPositions.length,
     circuitBreakerTripped,
     circuitBreakerReason,
   };
 
+  const is15m = timeframe === '15m';
+  const is5m = timeframe === '5m';
+  const lookback = is5m ? 20 : is15m ? 24 : profile.donchianLookback;
+  const atrCutoff = is5m ? 0.018 : is15m ? 0.015 : 0.0065;
+  const trendAdxMin = is5m ? 28 : is15m ? 26 : profile.pureTrendOnly ? 20 : 24;
+  const trendTpMult = is5m ? 1.4 : is15m ? 1.8 : 3.2;
+  const mrTpMult = is5m ? 1.0 : is15m ? 1.2 : 1.6;
+
   if (bars.length < 110) {
     return {
       symbol,
       isCsprng,
-      regime: isCsprng ? 'CSPRNG_BLOCKED' : 'NEUTRAL_TRANSITION',
+      regime: isCsprng && timeframe === '1h' ? 'CSPRNG_BLOCKED' : 'NEUTRAL_TRANSITION',
       chaosGatePassed: false,
       indicators: null,
       signalDirection: null,
       signalMode: null,
       signalHeadline: 'Warming Up Historical Candles',
-      signalRationale: `Need at least 110 candles to compute EMA(100), ADX(14), and Donchian(${profile.donchianLookback}) (currently ${bars.length} loaded).`,
+      signalRationale: `Need at least 110 candles to compute EMA(100), ADX(14), and Donchian(${lookback}) (currently ${bars.length} loaded).`,
       exitSignalForOpenPosition: { shouldExit: false, contractId: null, reason: null },
       riskPlan: baseRiskPlan,
     };
@@ -329,7 +358,6 @@ export function evaluateQuantSignal(params: {
 
   let hi = -Infinity;
   let lo = Infinity;
-  const lookback = profile.donchianLookback;
   for (let k = Math.max(0, idx - lookback); k < idx; k++) {
     if (bars[k].high > hi) hi = bars[k].high;
     if (bars[k].low < lo) lo = bars[k].low;
@@ -376,7 +404,7 @@ export function evaluateQuantSignal(params: {
     }
   }
 
-  if (isCsprng) {
+  if (isCsprng && timeframe === '1h') {
     return {
       symbol,
       isCsprng: true,
@@ -385,50 +413,74 @@ export function evaluateQuantSignal(params: {
       indicators,
       signalDirection: null,
       signalMode: null,
-      signalHeadline: 'CSPRNG Null-Hypothesis Market (No Directional Edge)',
+      signalHeadline: 'CSPRNG Null-Hypothesis Market (No 1H Directional Edge)',
       signalRationale:
-        'Synthetic indices are generated by a cryptographic RNG (lag-1 autocorrelation ≈ 0). Switch to 24/7 Crypto (cryBTCUSD / cryETHUSD) or Weekday Gold (frxXAUUSD) / Nasdaq-100 (OTC_NDX).',
+        'Synthetic indices on 1H lack institutional momentum. Switch to 24/7 Crypto (cryBTCUSD) or use the 15M Intraday Turbo mode with Circuit Breakers enabled.',
       exitSignalForOpenPosition,
       riskPlan: baseRiskPlan,
     };
   }
 
-  const chaosGatePassed = atrPct <= 0.0065;
+  const chaosGatePassed = atrPct <= atrCutoff;
   if (!chaosGatePassed) {
     return {
       symbol,
-      isCsprng: false,
+      isCsprng,
       regime: 'CHAOS_GATED_OUT',
       chaosGatePassed: false,
       indicators,
       signalDirection: null,
       signalMode: null,
-      signalHeadline: `Chaos Gate Active — 1h ATR (${indicators.atrPct.toFixed(2)}%) > 0.65%`,
+      signalHeadline: `Chaos Gate Active — ${timeframe.toUpperCase()} ATR (${indicators.atrPct.toFixed(2)}%) > ${(atrCutoff * 100).toFixed(2)}%`,
       signalRationale:
-        'Hourly volatility is too wide relative to the 0.97% 100x Multiplier knock-out buffer. Standing flat until volatility compresses.',
+        'Candle volatility is abnormally wide relative to the Multiplier knock-out buffer. Standing flat until volatility compresses.',
       exitSignalForOpenPosition,
       riskPlan: baseRiskPlan,
     };
   }
 
+  // Check prolonged chop gate on intraday timeframes (15m/5m)
+  let chopCount = 0;
+  for (let k = 0; k < 16 && idx - k >= 0; k++) {
+    if (adx[idx - k] < 19) chopCount++;
+  }
+  const isProlongedChop = (is15m || is5m) && chopCount >= 12;
+
   // 1. Trending Regime Check
-  const isTrending = profile.pureTrendOnly ? adx[idx] >= 20 : adx[idx] >= 24;
+  const isTrending = adx[idx] >= trendAdxMin;
   if (isTrending) {
+    if (isProlongedChop) {
+      return {
+        symbol,
+        isCsprng,
+        regime: 'CHOP_GATE_ACTIVE',
+        chaosGatePassed: true,
+        indicators,
+        signalDirection: null,
+        signalMode: null,
+        signalHeadline: `Chop Gate Active — Low ADX in ${chopCount}/16 Bars (False Breakout Blocked)`,
+        signalRationale:
+          'Market has been oscillating in a flat chop without directional volume. Breakouts in this regime carry high stop-out risk.',
+        exitSignalForOpenPosition,
+        riskPlan: baseRiskPlan,
+      };
+    }
+
     if (bar.close > hi && bar.close > ema100[idx] && ema30[idx] > ema100[idx]) {
       return {
         symbol,
-        isCsprng: false,
+        isCsprng,
         regime: 'TREND_EXPANSION',
         chaosGatePassed: true,
         indicators,
         signalDirection: 'rise',
         signalMode: 'trend',
-        signalHeadline: `MULTUP Trend Breakout (${lookback}h High + EMA30 > EMA100)`,
+        signalHeadline: `MULTUP Trend Breakout (${lookback}b High + EMA30 > EMA100 [${timeframe.toUpperCase()}])`,
         signalRationale: `Calm compression (ATR ${indicators.atrPct.toFixed(2)}%) + ADX ${adx[idx].toFixed(1)} expansion above ${lookback}-bar high (${hi.toFixed(2)}). Trail exit on EMA(30).`,
         exitSignalForOpenPosition,
         riskPlan: {
           ...baseRiskPlan,
-          recommendedTakeProfit: Number((recommendedStake * 3.2).toFixed(2)),
+          recommendedTakeProfit: Number((recommendedStake * trendTpMult).toFixed(2)),
         },
       };
     }
@@ -441,31 +493,31 @@ export function evaluateQuantSignal(params: {
     ) {
       return {
         symbol,
-        isCsprng: false,
+        isCsprng,
         regime: 'TREND_EXPANSION',
         chaosGatePassed: true,
         indicators,
         signalDirection: 'fall',
         signalMode: 'trend',
-        signalHeadline: `MULTDOWN Trend Breakdown (${lookback}h Low + EMA30 < EMA100)`,
+        signalHeadline: `MULTDOWN Trend Breakdown (${lookback}b Low + EMA30 < EMA100 [${timeframe.toUpperCase()}])`,
         signalRationale: `Calm compression (ATR ${indicators.atrPct.toFixed(2)}%) + ADX ${adx[idx].toFixed(1)} breakdown below ${lookback}-bar low (${lo.toFixed(2)}). Trail exit on EMA(30).`,
         exitSignalForOpenPosition,
         riskPlan: {
           ...baseRiskPlan,
-          recommendedTakeProfit: Number((recommendedStake * 3.2).toFixed(2)),
+          recommendedTakeProfit: Number((recommendedStake * trendTpMult).toFixed(2)),
         },
       };
     }
 
     return {
       symbol,
-      isCsprng: false,
+      isCsprng,
       regime: 'TREND_EXPANSION',
       chaosGatePassed: true,
       indicators,
       signalDirection: null,
       signalMode: null,
-      signalHeadline: `Trending Regime (ADX ${adx[idx].toFixed(1)}) — Waiting for ${lookback}h Breakout`,
+      signalHeadline: `Trending Regime (ADX ${adx[idx].toFixed(1)}) — Waiting for ${lookback}b Breakout`,
       signalRationale: `Trend filter active (${ema30[idx] >= ema100[idx] ? 'Bullish EMA30 > EMA100' : 'Bearish EMA30 < EMA100'}), awaiting clean close outside [${lo.toFixed(2)}, ${hi.toFixed(2)}].`,
       exitSignalForOpenPosition,
       riskPlan: baseRiskPlan,
@@ -483,18 +535,18 @@ export function evaluateQuantSignal(params: {
     ) {
       return {
         symbol,
-        isCsprng: false,
+        isCsprng,
         regime: 'RANGE_MEAN_REVERSION',
         chaosGatePassed: true,
         indicators,
         signalDirection: 'rise',
         signalMode: 'mr',
-        signalHeadline: 'MULTUP Oversold Mean-Reversion Hook (RSI Cross > 27)',
-        signalRationale: `Low-ADX range regime (ADX ${adx[idx].toFixed(1)}) + bullish RSI(14) recovery from ${prevRsi.toFixed(1)} to ${rsi[idx].toFixed(1)}. Target +1.6R Take Profit.`,
+        signalHeadline: `MULTUP Oversold Mean-Reversion Hook (RSI Cross > 27 [${timeframe.toUpperCase()}])`,
+        signalRationale: `Low-ADX range regime (ADX ${adx[idx].toFixed(1)}) + bullish RSI(14) recovery from ${prevRsi.toFixed(1)} to ${rsi[idx].toFixed(1)}. Target +${mrTpMult}R Take Profit.`,
         exitSignalForOpenPosition,
         riskPlan: {
           ...baseRiskPlan,
-          recommendedTakeProfit: Number((recommendedStake * 1.6).toFixed(2)),
+          recommendedTakeProfit: Number((recommendedStake * mrTpMult).toFixed(2)),
         },
       };
     }
@@ -502,25 +554,25 @@ export function evaluateQuantSignal(params: {
     if (!profile.longBiasOnly && prevRsi > 73 && rsi[idx] <= 73 && bar.close < bar.open) {
       return {
         symbol,
-        isCsprng: false,
+        isCsprng,
         regime: 'RANGE_MEAN_REVERSION',
         chaosGatePassed: true,
         indicators,
         signalDirection: 'fall',
         signalMode: 'mr',
-        signalHeadline: 'MULTDOWN Overbought Mean-Reversion Hook (RSI Cross < 73)',
-        signalRationale: `Low-ADX range regime (ADX ${adx[idx].toFixed(1)}) + bearish RSI(14) turn from ${prevRsi.toFixed(1)} to ${rsi[idx].toFixed(1)}. Target +1.6R Take Profit.`,
+        signalHeadline: `MULTDOWN Overbought Mean-Reversion Hook (RSI Cross < 73 [${timeframe.toUpperCase()}])`,
+        signalRationale: `Low-ADX range regime (ADX ${adx[idx].toFixed(1)}) + bearish RSI(14) turn from ${prevRsi.toFixed(1)} to ${rsi[idx].toFixed(1)}. Target +${mrTpMult}R Take Profit.`,
         exitSignalForOpenPosition,
         riskPlan: {
           ...baseRiskPlan,
-          recommendedTakeProfit: Number((recommendedStake * 1.6).toFixed(2)),
+          recommendedTakeProfit: Number((recommendedStake * mrTpMult).toFixed(2)),
         },
       };
     }
 
     return {
       symbol,
-      isCsprng: false,
+      isCsprng,
       regime: 'RANGE_MEAN_REVERSION',
       chaosGatePassed: true,
       indicators,
@@ -535,7 +587,7 @@ export function evaluateQuantSignal(params: {
 
   return {
     symbol,
-    isCsprng: false,
+    isCsprng,
     regime: 'NEUTRAL_TRANSITION',
     chaosGatePassed: true,
     indicators,
