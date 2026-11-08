@@ -31,7 +31,7 @@ export interface QuantRiskPlan {
   stakePctOfBalance: number;
   recommendedMultiplier: number;
   recommendedTakeProfit: number | null;
-  recommendedStopLoss: null; // Uses Deriv's zero-slippage -100% stake Stop-Out floor (-1R)
+  recommendedStopLoss: number | null; // Optional user SL or Deriv stop-out floor
   throttledByDrawdown: boolean;
   consecutiveLosses: number;
   timeframe: QuantTimeframe;
@@ -308,12 +308,15 @@ export function evaluateQuantSignal(params: {
       'Max 3 concurrent portfolio positions active (2.25% total risk cap reached).';
   }
 
+  const is15m = timeframe === '15m';
+  const is5m = timeframe === '5m';
+
   const baseRiskPlan: QuantRiskPlan = {
     recommendedStake,
     stakePctOfBalance,
-    recommendedMultiplier: 100,
+    recommendedMultiplier: is15m ? 30 : 100,
     recommendedTakeProfit: null,
-    recommendedStopLoss: null,
+    recommendedStopLoss: is15m ? Number((recommendedStake * 0.65).toFixed(2)) : null,
     throttledByDrawdown,
     consecutiveLosses,
     timeframe,
@@ -323,12 +326,10 @@ export function evaluateQuantSignal(params: {
     circuitBreakerReason,
   };
 
-  const is15m = timeframe === '15m';
-  const is5m = timeframe === '5m';
-  const lookback = is5m ? 20 : is15m ? 24 : profile.donchianLookback;
+  const lookback = is5m ? 20 : is15m ? 32 : profile.donchianLookback;
   const atrCutoff = is5m ? 0.018 : is15m ? 0.015 : 0.0065;
-  const trendAdxMin = is5m ? 28 : is15m ? 26 : profile.pureTrendOnly ? 20 : 24;
-  const trendTpMult = is5m ? 1.4 : is15m ? 1.8 : 3.2;
+  const trendAdxMin = is5m ? 28 : is15m ? 28 : profile.pureTrendOnly ? 20 : 24;
+  const trendTpMult = is5m ? 1.4 : is15m ? 2.0 : 3.2;
   const mrTpMult = is5m ? 1.0 : is15m ? 1.2 : 1.6;
 
   if (bars.length < 110) {
