@@ -1,0 +1,41 @@
+{
+  "name": "deriv-rise-fall-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Synthetic Indices Rise/Fall trading web app with Express OAuth/OTP BFF and Lightweight Charts",
+  "scripts": {
+    "dev": "concurrently -k -n BFF,WEB \"tsx watch server/index.ts\" \"vite\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:client": "vite",
+    "build": "tsc -b && vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.server.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "lightweight-charts": "^5.0.0",
+    "lucide-react": "^0.475.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.2.0",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.4",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "jsdom": "^26.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.7"
+  }
+}
