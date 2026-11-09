@@ -25,7 +25,9 @@ import {
 import {
   normalizeOpenContract,
   normalizePortfolioContract,
+  normalizeProfitTableTransaction,
   type PortfolioContractWire,
+  type ProfitTableTransactionWire,
 } from '../services/positionNormalizer';
 
 const MAX_PROPOSAL_AGE_MS = 2_000;
@@ -530,6 +532,26 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
         // Non-fatal if portfolio snapshot fails transiently
       });
 
+    // 1b. Initial one-shot profit_table snapshot for closed / settled contracts
+    void socket
+      .request<{ profit_table?: { transactions?: ProfitTableTransactionWire[] } }>(
+        { profit_table: 1, description: 1, limit: 50 },
+        { expectedGeneration: capturedGen },
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const txs = Array.isArray(res.profit_table?.transactions)
+          ? res.profit_table!.transactions
+          : [];
+        for (const raw of txs) {
+          const norm = normalizeProfitTableTransaction(raw);
+          if (norm) upsertPosition(norm);
+        }
+      })
+      .catch(() => {
+        // Non-fatal if profit_table snapshot fails transiently
+      });
+
     // 2. Live all-open-contracts stream (`proposal_open_contract: 1, subscribe: 1`)
     const pocSub = socket.subscribe(
       { proposal_open_contract: 1 },
@@ -539,7 +561,34 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
           const wire = msg.proposal_open_contract as ProposalOpenContractWire | undefined;
           if (!wire || typeof wire.contract_id !== 'number') return;
           const norm = normalizeOpenContract(wire);
-          if (norm) upsertPosition(norm);
+          if (norm) {
+            upsertPosition(norm);
+            if (norm.isSold) {
+              void fetch('/api/quant/trades', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contract_id: norm.contractId,
+                  account_id: accountId || 'demo',
+                  symbol: norm.underlyingSymbol,
+                  direction: norm.contractType === 'MULTUP' ? 'rise' : 'fall',
+                  multiplier: norm.multiplier || 30,
+                  stake: norm.buyPrice,
+                  entry_price: norm.entrySpot,
+                  exit_price: norm.exitSpot || norm.currentSpot,
+                  profit_loss: norm.profit,
+                  status: norm.status,
+                  exit_reason: norm.status,
+                  timeframe: '15m',
+                  engine:
+                    norm.underlyingSymbol.startsWith('1HZ') ||
+                    norm.underlyingSymbol.startsWith('R_')
+                      ? '15M Turbo'
+                      : '1H Macro',
+                }),
+              }).catch(() => {});
+            }
+          }
         },
       },
       { expectedGeneration: capturedGen },
@@ -832,6 +881,26 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
 
       if (res.buy) {
         setLastReceipt(res.buy);
+        void fetch('/api/quant/trades', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contract_id: res.buy.contract_id,
+            account_id: accountId || 'demo',
+            symbol: confirmation.underlyingSymbol,
+            direction: confirmation.direction,
+            multiplier: confirmation.multiplier || 30,
+            stake: confirmation.askPrice,
+            entry_price: confirmation.spot,
+            status: 'open',
+            timeframe: '15m',
+            engine:
+              confirmation.underlyingSymbol.startsWith('1HZ') ||
+              confirmation.underlyingSymbol.startsWith('R_')
+                ? '15M Turbo'
+                : '1H Macro',
+          }),
+        }).catch(() => {});
         // Ensure individual contract state is fetched immediately alongside stream updates
         void socket
           .request(
@@ -939,6 +1008,16 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
           },
           { expectedGeneration: connectionGeneration, timeoutMs: 10_000 },
         );
+        void fetch('/api/quant/trades', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contract_id: contractId,
+            account_id: accountId || 'demo',
+            status: 'sold',
+            exit_reason: 'manual_market_sell',
+          }),
+        }).catch(() => {});
       } catch (err) {
         // Reconcile `is_sold` with `proposal_open_contract` before reporting
         try {
@@ -1019,6 +1098,25 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
 
         if (res.buy) {
           setLastReceipt(res.buy);
+          void fetch('/api/quant/trades', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contract_id: res.buy.contract_id,
+              account_id: accountId || 'demo',
+              symbol: underlyingSymbol,
+              direction,
+              multiplier: multiplier || 30,
+              stake: ask,
+              entry_price: Number(freshProp.spot),
+              status: 'open',
+              timeframe: '15m',
+              engine:
+                underlyingSymbol.startsWith('1HZ') || underlyingSymbol.startsWith('R_')
+                  ? '15M Turbo'
+                  : '1H Macro',
+            }),
+          }).catch(() => {});
           void socket
             .request(
               { proposal_open_contract: 1, contract_id: res.buy.contract_id },

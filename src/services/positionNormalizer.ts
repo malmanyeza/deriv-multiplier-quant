@@ -144,3 +144,73 @@ export function normalizePortfolioContract(
     sellTransactionId: null,
   };
 }
+
+export interface ProfitTableTransactionWire {
+  contract_id?: number;
+  transaction_id?: number;
+  buy_price?: number;
+  sell_price?: number;
+  purchase_time?: number;
+  sell_time?: number;
+  shortcode?: string;
+  longcode?: string;
+  pnl?: number;
+  underlying_symbol?: string;
+}
+
+export function normalizeProfitTableTransaction(
+  wire: ProfitTableTransactionWire,
+): NormalizedPosition | null {
+  if (typeof wire.contract_id !== 'number') return null;
+  const buyPrice = typeof wire.buy_price === 'number' ? wire.buy_price : 0;
+  const sellPrice = typeof wire.sell_price === 'number' ? wire.sell_price : 0;
+  const profit = typeof wire.pnl === 'number' ? wire.pnl : sellPrice - buyPrice;
+  const profitPercentage = buyPrice > 0 ? (profit / buyPrice) * 100 : 0;
+
+  let sym = wire.underlying_symbol ?? '';
+  let contractType = 'CALL';
+  if (wire.shortcode) {
+    const parts = wire.shortcode.split('_');
+    if (parts.length >= 2) {
+      contractType = parts[0];
+      if (!sym) sym = parts[1];
+    }
+  }
+
+  return {
+    contractId: wire.contract_id,
+    contractType,
+    underlyingSymbol: sym,
+    currency: 'USD',
+    longcode: wire.longcode ?? '',
+    shortcode: wire.shortcode ?? '',
+    buyPrice,
+    bidPrice: sellPrice,
+    payout: sellPrice,
+    profit,
+    profitPercentage,
+    multiplier: null,
+    stopOutPrice: null,
+    takeProfitPrice: null,
+    stopLossPrice: null,
+    purchaseTime: wire.purchase_time ?? 0,
+    dateStart: wire.purchase_time ?? 0,
+    dateExpiry: wire.sell_time ?? null,
+    entrySpot: null,
+    entrySpotTime: null,
+    currentSpot: null,
+    currentSpotTime: null,
+    exitSpot: null,
+    exitSpotTime: null,
+    sellPrice,
+    sellTime: wire.sell_time ?? null,
+    tickCount: null,
+    ticksObserved: 0,
+    isSold: true,
+    isExpired: true,
+    isValidToSell: false,
+    status: profit >= 0 ? 'won' : 'lost',
+    buyTransactionId: null,
+    sellTransactionId: typeof wire.transaction_id === 'number' ? wire.transaction_id : null,
+  };
+}
