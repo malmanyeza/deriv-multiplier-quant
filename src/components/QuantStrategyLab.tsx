@@ -92,18 +92,30 @@ const REGIME_BADGES: Record<
 };
 
 const BASKET_15M = [
-  { code: '1HZ100V', name: 'Vol 100 (1s)', label: '1HZ100V (Vol 100 1s · 30x)', market: 'synthetic_index' },
-  { code: 'R_75', name: 'Volatility 75', label: 'R_75 (Vol 75 · 30x)', market: 'synthetic_index' },
-  { code: '1HZ50V', name: 'Vol 50 (1s)', label: '1HZ50V (Vol 50 1s · 30x)', market: 'synthetic_index' },
-  { code: 'R_100', name: 'Volatility 100', label: 'R_100 (Vol 100 · 30x)', market: 'synthetic_index' },
+  { code: '1HZ100V', name: 'Vol 100 (1s)', label: '1HZ100V (Vol 100 1s · 30x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: 'R_75', name: 'Volatility 75', label: 'R_75 (Vol 75 · 30x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: '1HZ50V', name: 'Vol 50 (1s)', label: '1HZ50V (Vol 50 1s · 30x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: 'R_100', name: 'Volatility 100', label: 'R_100 (Vol 100 · 30x)', market: 'synthetic_index', engine: '15m' as const },
 ];
 
 const BASKET_1H = [
-  { code: 'cryBTCUSD', name: 'BTC/USD', label: 'BTC/USD (24/7 · 2.99 bps)', market: 'cryptocurrency' },
-  { code: 'cryETHUSD', name: 'ETH/USD', label: 'ETH/USD (24/7 · +21.7R)', market: 'cryptocurrency' },
-  { code: 'frxXAUUSD', name: 'Gold XAU/USD', label: 'Gold XAU/USD (Mon–Fri · PF 1.60)', market: 'commodities' },
-  { code: 'OTC_NDX', name: 'US Tech 100', label: 'US Tech 100 (Mon–Fri · OOS PF 4.86)', market: 'indices' },
-  { code: '1HZ100V', name: '1HZ100V', label: '1HZ100V (CSPRNG Control)', market: 'synthetic_index' },
+  { code: 'cryBTCUSD', name: 'BTC/USD', label: 'BTC/USD (24/7 · 2.99 bps)', market: 'cryptocurrency', engine: '1h' as const },
+  { code: 'cryETHUSD', name: 'ETH/USD', label: 'ETH/USD (24/7 · +21.7R)', market: 'cryptocurrency', engine: '1h' as const },
+  { code: 'frxXAUUSD', name: 'Gold XAU/USD', label: 'Gold XAU/USD (Mon–Fri · PF 1.60)', market: 'commodities', engine: '1h' as const },
+  { code: 'OTC_NDX', name: 'US Tech 100', label: 'US Tech 100 (Mon–Fri · OOS PF 4.86)', market: 'indices', engine: '1h' as const },
+  { code: '1HZ100V', name: '1HZ100V', label: '1HZ100V (CSPRNG Control)', market: 'synthetic_index', engine: '1h' as const },
+];
+
+const BASKET_DUAL = [
+  // 15M Intraday Turbo Engine
+  { code: '1HZ100V', name: 'Vol 100 (1s)', label: '1HZ100V (15M · 30x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: 'R_75', name: 'Volatility 75', label: 'R_75 (15M · 30x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: '1HZ50V', name: 'Vol 50 (1s)', label: '1HZ50V (15M · 30x)', market: 'synthetic_index', engine: '15m' as const },
+  // 1H Macro Quant Engine
+  { code: 'cryBTCUSD', name: 'BTC/USD', label: 'BTC/USD (1H · 100x)', market: 'cryptocurrency', engine: '1h' as const },
+  { code: 'cryETHUSD', name: 'ETH/USD', label: 'ETH/USD (1H · 100x)', market: 'cryptocurrency', engine: '1h' as const },
+  { code: 'frxXAUUSD', name: 'Gold XAU/USD', label: 'Gold XAU/USD (1H · 100x)', market: 'commodities', engine: '1h' as const },
+  { code: 'OTC_NDX', name: 'US Tech 100', label: 'US Tech 100 (1H · 100x)', market: 'indices', engine: '1h' as const },
 ];
 
 export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
@@ -134,8 +146,15 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
   const [nextBarCountdown, setNextBarCountdown] = useState<string>('—');
   const [auditLogs, setAuditLogs] = useState<BotAuditEntry[]>([]);
 
+  const isSyntheticSymbol = symbol.startsWith('1HZ') || symbol.startsWith('R_');
   const granularity =
-    selectedTimeframe === '5m' ? 300 : selectedTimeframe === '15m' ? 900 : 3600;
+    selectedTimeframe === '5m'
+      ? 300
+      : selectedTimeframe === '15m'
+        ? 900
+        : selectedTimeframe === 'dual'
+          ? (isSyntheticSymbol ? 900 : 3600)
+          : 3600;
 
   const lastAutoActedBarTimeRef = useRef<number>(0);
 
@@ -156,18 +175,34 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
   useEffect(() => {
     const updateClock = () => {
       const nowSec = Math.floor(Date.now() / 1000);
-      const nextBarSec = Math.ceil((nowSec + 1) / granularity) * granularity;
-      const diff = Math.max(0, nextBarSec - nowSec);
-      const mins = Math.floor(diff / 60);
-      const secs = diff % 60;
-      setNextBarCountdown(
-        `${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`,
-      );
+      if (selectedTimeframe === 'dual') {
+        const next15m = Math.ceil((nowSec + 1) / 900) * 900;
+        const diff15 = Math.max(0, next15m - nowSec);
+        const m15 = Math.floor(diff15 / 60);
+        const s15 = diff15 % 60;
+
+        const next1h = Math.ceil((nowSec + 1) / 3600) * 3600;
+        const diff1h = Math.max(0, next1h - nowSec);
+        const m1h = Math.floor(diff1h / 60);
+        const s1h = diff1h % 60;
+
+        setNextBarCountdown(
+          `15M: ${String(m15).padStart(2, '0')}m ${String(s15).padStart(2, '0')}s | 1H: ${String(m1h).padStart(2, '0')}m ${String(s1h).padStart(2, '0')}s`,
+        );
+      } else {
+        const nextBarSec = Math.ceil((nowSec + 1) / granularity) * granularity;
+        const diff = Math.max(0, nextBarSec - nowSec);
+        const mins = Math.floor(diff / 60);
+        const secs = diff % 60;
+        setNextBarCountdown(
+          `${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`,
+        );
+      }
     };
     updateClock();
     const timer = window.setInterval(updateClock, 1000);
     return () => window.clearInterval(timer);
-  }, [granularity]);
+  }, [granularity, selectedTimeframe]);
 
   // Fetch initial candles + stream live OHLC for the active symbol & timeframe
   const loadMultiPageCandles = useCallback(
@@ -385,13 +420,14 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         }
       });
     } else if (
-      selectedTimeframe === '15m' &&
+      (selectedTimeframe === '15m' || selectedTimeframe === 'dual') &&
       positions.filter((p) => !p.isSold).length < 3
     ) {
-      // Multi-asset basket scan when active symbol has no signal on 15M bar close
+      // Multi-asset basket scan when active symbol has no signal on bar close
       lastAutoActedBarTimeRef.current = barTime;
       void (async () => {
-        for (const item of BASKET_15M) {
+        const basketToScan = selectedTimeframe === 'dual' ? BASKET_DUAL : BASKET_15M;
+        for (const item of basketToScan) {
           if (item.code === symbol) continue;
           const openForSym = positions.some(
             (p) => !p.isSold && p.underlyingSymbol === item.code,
@@ -399,13 +435,14 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           if (openForSym) continue;
 
           try {
+            const gran = item.engine === '15m' ? 900 : 3600;
             const res = await socket.request<{
               candles?: Array<Record<string, unknown>>;
             }>(
               {
                 ticks_history: item.code,
                 style: 'candles',
-                granularity: 900,
+                granularity: gran,
                 count: 150,
                 end: 'latest',
               },
@@ -420,7 +457,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
               positions,
               stakeLimits,
               riskPctOfBalance: riskPct,
-              timeframe: '15m',
+              timeframe: item.engine,
             });
             if (
               evalBasket.signalDirection &&
@@ -436,7 +473,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
               });
               appendLog(
                 'entry',
-                `15M Basket Auto-Pilot: Breakout on ${item.name} (${item.code}). Executing ${evalBasket.signalDirection === 'rise' ? 'MULTUP' : 'MULTDOWN'} ${evalBasket.riskPlan.recommendedMultiplier}x…`,
+                `${item.engine.toUpperCase()} Auto-Pilot: Breakout on ${item.name} (${item.code}). Executing ${evalBasket.signalDirection === 'rise' ? 'MULTUP' : 'MULTDOWN'} ${evalBasket.riskPlan.recommendedMultiplier}x…`,
               );
               void onExecuteDirectBuy(evalBasket.signalDirection);
               break;
@@ -488,8 +525,12 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       connectionStatus === 'ready_authenticated';
     if (!isSocketReady || scanningBasket) return;
 
-    const is15mMode = selectedTimeframe === '15m';
-    const targetBasket = is15mMode ? BASKET_15M : BASKET_1H;
+    const targetBasket =
+      selectedTimeframe === 'dual'
+        ? BASKET_DUAL
+        : selectedTimeframe === '15m'
+          ? BASKET_15M
+          : BASKET_1H;
 
     setScanningBasket(true);
     appendLog(
@@ -500,13 +541,14 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     try {
       let triggeredSymbol: string | null = null;
       for (const item of targetBasket) {
+        const gran = item.engine === '15m' ? 900 : 3600;
         const res = await socket.request<{
           candles?: Array<Record<string, unknown>>;
         }>(
           {
             ticks_history: item.code,
             style: 'candles',
-            granularity,
+            granularity: gran,
             count: 250,
             end: 'latest',
           },
@@ -521,7 +563,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           positions,
           stakeLimits,
           riskPctOfBalance: riskPct,
-          timeframe: selectedTimeframe,
+          timeframe: item.engine,
         });
         const adxStr = evalRes.indicators
           ? `ADX=${evalRes.indicators.adx14.toFixed(1)}, ATR=${evalRes.indicators.atrPct.toFixed(2)}%`
@@ -531,12 +573,12 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           triggeredSymbol = item.code;
           appendLog(
             'entry',
-            `SIGNAL FOUND on ${item.name} (${item.code}): ${evalRes.signalHeadline} (${adxStr})`,
+            `SIGNAL FOUND on ${item.name} (${item.code} · ${item.engine.toUpperCase()}): ${evalRes.signalHeadline} (${adxStr})`,
           );
         } else {
           appendLog(
             'info',
-            `${item.name}: ${evalRes.signalHeadline} (${adxStr})`,
+            `${item.name} (${item.engine.toUpperCase()}): ${evalRes.signalHeadline} (${adxStr})`,
           );
         }
       }
@@ -685,6 +727,14 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           <span className="quant-tf-tag">TIMEFRAME:</span>
           <button
             type="button"
+            className={`btn btn-xs ${selectedTimeframe === 'dual' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setSelectedTimeframe('dual')}
+            title="Parallel 15M Turbo + 1H Macro execution with shared 3-position risk cap"
+          >
+            ⚡ Dual-Engine Hybrid (15M + 1H)
+          </button>
+          <button
+            type="button"
             className={`btn btn-xs ${selectedTimeframe === '1h' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setSelectedTimeframe('1h')}
           >
@@ -771,12 +821,16 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
             <RefreshCw size={12} aria-hidden="true" />
             <span>
               {scanningBasket
-                ? selectedTimeframe === '15m'
-                  ? 'Scanning 15M Basket…'
-                  : 'Scanning 4 Markets…'
-                : selectedTimeframe === '15m'
-                  ? 'Scan 15M High-Alpha Synthetic Basket'
-                  : 'Scan All 4 Alpha Markets'}
+                ? selectedTimeframe === 'dual'
+                  ? 'Scanning Dual Basket…'
+                  : selectedTimeframe === '15m'
+                    ? 'Scanning 15M Basket…'
+                    : 'Scanning 4 Markets…'
+                : selectedTimeframe === 'dual'
+                  ? 'Scan Dual-Engine Basket (7 Assets)'
+                  : selectedTimeframe === '15m'
+                    ? 'Scan 15M High-Alpha Synthetic Basket'
+                    : 'Scan All 4 Alpha Markets'}
             </span>
           </button>
 
@@ -818,9 +872,13 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       {/* Quick-Switch Audited Basket */}
       <div className="quant-basket-bar">
         <span className="quant-basket-caption">
-          {selectedTimeframe === '15m' ? '15M Synthetic Basket:' : 'Audited 1H Basket:'}
+          {selectedTimeframe === 'dual'
+            ? 'Dual-Engine Basket (15M Turbo + 1H Macro):'
+            : selectedTimeframe === '15m'
+              ? '15M Synthetic Basket:'
+              : 'Audited 1H Basket:'}
         </span>
-        {(selectedTimeframe === '15m' ? BASKET_15M : BASKET_1H).map((item) => (
+        {(selectedTimeframe === 'dual' ? BASKET_DUAL : selectedTimeframe === '15m' ? BASKET_15M : BASKET_1H).map((item) => (
           <button
             key={item.code}
             type="button"

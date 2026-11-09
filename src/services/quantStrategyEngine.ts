@@ -2,7 +2,7 @@ import type { CandlePoint } from './chartFeed';
 import { isCsprngSyntheticSymbol } from './marketData';
 import type { NormalizedPosition, TradeDirection } from '../types/deriv';
 
-export type QuantTimeframe = '1h' | '15m' | '5m';
+export type QuantTimeframe = '1h' | '15m' | '5m' | 'dual';
 
 export type QuantRegime =
   | 'TREND_EXPANSION'
@@ -308,7 +308,8 @@ export function evaluateQuantSignal(params: {
       'Max 3 concurrent portfolio positions active (2.25% total risk cap reached).';
   }
 
-  const is15m = timeframe === '15m';
+  const isSynthetic = isCsprng || symbol.startsWith('1HZ') || symbol.startsWith('R_');
+  const is15m = timeframe === '15m' || (timeframe === 'dual' && isSynthetic);
   const is5m = timeframe === '5m';
 
   const baseRiskPlan: QuantRiskPlan = {
