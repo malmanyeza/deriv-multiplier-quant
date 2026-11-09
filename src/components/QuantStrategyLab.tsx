@@ -136,11 +136,27 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
   onSellAtMarket,
   onStartLogin,
 }) => {
-  const [selectedTimeframe, setSelectedTimeframe] = useState<QuantTimeframe>('1h');
+  const [selectedTimeframe, setSelectedTimeframe] = useState<QuantTimeframe>(() => {
+    try {
+      const saved = localStorage.getItem('deriv_quant_timeframe');
+      if (saved === '1h' || saved === '15m' || saved === '5m' || saved === 'dual') {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return 'dual';
+  });
   const [candles1h, setCandles1h] = useState<CandlePoint[]>([]);
   const [loadingCandles, setLoadingCandles] = useState<boolean>(false);
   const [deepAuditLoading, setDeepAuditLoading] = useState<boolean>(false);
-  const [autoPilotArmed, setAutoPilotArmed] = useState<boolean>(false);
+  const [autoPilotArmed, setAutoPilotArmed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('deriv_quant_autopilot_armed') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [scanningBasket, setScanningBasket] = useState<boolean>(false);
   const [testFiring, setTestFiring] = useState<TradeDirection | null>(null);
   const [nextBarCountdown, setNextBarCountdown] = useState<string>('—');
@@ -358,16 +374,22 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
   );
   const canArmAutoPilot = authenticated && accountType === 'demo';
 
-  // Disarm Auto-Pilot automatically if user switches away from Demo account
+  // Disarm Auto-Pilot automatically only if user switches to Real account
   useEffect(() => {
-    if (autoPilotArmed && accountType !== 'demo') {
+    if (!authenticated) return;
+    if (autoPilotArmed && accountType === 'real') {
       setAutoPilotArmed(false);
+      try {
+        localStorage.setItem('deriv_quant_autopilot_armed', 'false');
+      } catch {
+        // ignore
+      }
       appendLog(
         'blocked',
         'Auto-Pilot disarmed: Real account selected. Forward-test 50 Demo trades first.',
       );
     }
-  }, [autoPilotArmed, accountType, appendLog]);
+  }, [autoPilotArmed, authenticated, accountType, appendLog]);
 
   // Auto-Pilot execution loop on newly closed 1h bar
   useEffect(() => {
@@ -695,6 +717,11 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
               onClick={() => {
                 const next = !autoPilotArmed;
                 setAutoPilotArmed(next);
+                try {
+                  localStorage.setItem('deriv_quant_autopilot_armed', String(next));
+                } catch {
+                  // ignore
+                }
                 appendLog(
                   'info',
                   next
@@ -728,7 +755,10 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           <button
             type="button"
             className={`btn btn-xs ${selectedTimeframe === 'dual' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => setSelectedTimeframe('dual')}
+            onClick={() => {
+              setSelectedTimeframe('dual');
+              try { localStorage.setItem('deriv_quant_timeframe', 'dual'); } catch {}
+            }}
             title="Parallel 15M Turbo + 1H Macro execution with shared 3-position risk cap"
           >
             ⚡ Dual-Engine Hybrid (15M + 1H)
@@ -736,21 +766,30 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           <button
             type="button"
             className={`btn btn-xs ${selectedTimeframe === '1h' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => setSelectedTimeframe('1h')}
+            onClick={() => {
+              setSelectedTimeframe('1h');
+              try { localStorage.setItem('deriv_quant_timeframe', '1h'); } catch {}
+            }}
           >
             1H Macro (Recommended)
           </button>
           <button
             type="button"
             className={`btn btn-xs ${selectedTimeframe === '15m' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => setSelectedTimeframe('15m')}
+            onClick={() => {
+              setSelectedTimeframe('15m');
+              try { localStorage.setItem('deriv_quant_timeframe', '15m'); } catch {}
+            }}
           >
             15M Intraday Turbo
           </button>
           <button
             type="button"
             className={`btn btn-xs ${selectedTimeframe === '5m' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => setSelectedTimeframe('5m')}
+            onClick={() => {
+              setSelectedTimeframe('5m');
+              try { localStorage.setItem('deriv_quant_timeframe', '5m'); } catch {}
+            }}
           >
             5M Micro Scalp
           </button>
