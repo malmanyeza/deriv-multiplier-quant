@@ -12,6 +12,12 @@ import {
   issueAccountOtpSocketUrl,
   resetDemoAccountBalance,
 } from './derivClient.js';
+import {
+  getSupabase,
+  saveQuantTrade,
+  logBotAudit,
+  getRecentTrades,
+} from './supabaseClient.js';
 
 dotenv.config();
 
@@ -29,8 +35,8 @@ export interface ServerConfig {
 }
 
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
-  const port = Number(env.BFF_PORT ?? 3001);
-  const frontendOrigin = (env.FRONTEND_ORIGIN ?? 'http://localhost:5173').replace(/\/+$/, '');
+  const port = Number(env.PORT ?? env.BFF_PORT ?? 3001);
+  const frontendOrigin = (env.FRONTEND_ORIGIN ?? '').trim().replace(/\/+$/, '');
   const derivClientId = (env.DERIV_CLIENT_ID ?? '').trim();
   const derivAppId = (env.DERIV_APP_ID ?? derivClientId).trim();
   const derivRedirectUri = (env.DERIV_REDIRECT_URI ?? '').trim();
@@ -552,6 +558,41 @@ export function createApp(
 
     clearSessionCookie(res);
     res.json({ ok: true });
+  });
+
+  // ── Supabase Persistence Endpoints ──────────────────────────────────────────
+  app.get('/api/quant/status', (_req, res) => {
+    const sb = getSupabase();
+    res.json({
+      supabaseConnected: Boolean(sb),
+      hasUrl: Boolean(process.env.SUPABASE_URL),
+      hasKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY),
+    });
+  });
+
+  app.get('/api/quant/trades', async (req, res) => {
+    const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : undefined;
+    const limit = Number(req.query.limit || 50);
+    const trades = await getRecentTrades(accountId, limit);
+    res.json({ trades });
+  });
+
+  app.post('/api/quant/trades', async (req, res) => {
+    const sid = req.cookies?.[SESSION_COOKIE_NAME] as string | undefined;
+    const session = store.getOrCreateSession(sid);
+    if (!requireCsrf(req, res, session)) return;
+
+    const saved = await saveQuantTrade(req.body);
+    res.json({ ok: saved });
+  });
+
+  app.post('/api/quant/audit', async (req, res) => {
+    const sid = req.cookies?.[SESSION_COOKIE_NAME] as string | undefined;
+    const session = store.getOrCreateSession(sid);
+    if (!requireCsrf(req, res, session)) return;
+
+    const saved = await logBotAudit(req.body);
+    res.json({ ok: saved });
   });
 
   if (isProduction) {

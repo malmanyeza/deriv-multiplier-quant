@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: deriv-multiplier-quant
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/auth/status
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DERIV_APP_ID
+        sync: false
+      - key: DERIV_CLIENT_ID
+        sync: false
+      - key: DERIV_REDIRECT_URI
+        sync: false
+      - key: DERIV_PAT
+        sync: false
+      - key: DERIV_SCOPES
+        value: trade
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
