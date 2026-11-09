@@ -205,7 +205,7 @@ export const App: React.FC = () => {
       multiplier: number;
       amount: number;
       takeProfit: number | null;
-      stopLoss: null;
+      stopLoss: number | null;
     }) => {
       if (rules?.supportsMultipliers) {
         setContractFamily('multipliers');

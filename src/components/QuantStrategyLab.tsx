@@ -49,7 +49,7 @@ interface QuantStrategyLabProps {
     multiplier: number;
     amount: number;
     takeProfit: number | null;
-    stopLoss: null;
+    stopLoss: number | null;
   }) => void;
   onExecuteDirectBuy: (direction: TradeDirection) => Promise<BuyWire | null>;
   onSellAtMarket: (contractId: number) => Promise<void>;
@@ -90,6 +90,21 @@ const REGIME_BADGES: Record<
     className: 'regime-error',
   },
 };
+
+const BASKET_15M = [
+  { code: '1HZ100V', name: 'Vol 100 (1s)', label: '1HZ100V (Vol 100 1s · 30x)', market: 'synthetic_index' },
+  { code: 'R_75', name: 'Volatility 75', label: 'R_75 (Vol 75 · 30x)', market: 'synthetic_index' },
+  { code: '1HZ50V', name: 'Vol 50 (1s)', label: '1HZ50V (Vol 50 1s · 30x)', market: 'synthetic_index' },
+  { code: 'R_100', name: 'Volatility 100', label: 'R_100 (Vol 100 · 30x)', market: 'synthetic_index' },
+];
+
+const BASKET_1H = [
+  { code: 'cryBTCUSD', name: 'BTC/USD', label: 'BTC/USD (24/7 · 2.99 bps)', market: 'cryptocurrency' },
+  { code: 'cryETHUSD', name: 'ETH/USD', label: 'ETH/USD (24/7 · +21.7R)', market: 'cryptocurrency' },
+  { code: 'frxXAUUSD', name: 'Gold XAU/USD', label: 'Gold XAU/USD (Mon–Fri · PF 1.60)', market: 'commodities' },
+  { code: 'OTC_NDX', name: 'US Tech 100', label: 'US Tech 100 (Mon–Fri · OOS PF 4.86)', market: 'indices' },
+  { code: '1HZ100V', name: '1HZ100V', label: '1HZ100V (CSPRNG Control)', market: 'synthetic_index' },
+];
 
 export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
   socket,
@@ -354,7 +369,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         multiplier: evaluation.riskPlan.recommendedMultiplier,
         amount: evaluation.riskPlan.recommendedStake,
         takeProfit: evaluation.riskPlan.recommendedTakeProfit,
-        stopLoss: null,
+        stopLoss: evaluation.riskPlan.recommendedStopLoss,
       });
 
       appendLog(
@@ -369,6 +384,68 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           );
         }
       });
+    } else if (
+      selectedTimeframe === '15m' &&
+      positions.filter((p) => !p.isSold).length < 3
+    ) {
+      // Multi-asset basket scan when active symbol has no signal on 15M bar close
+      lastAutoActedBarTimeRef.current = barTime;
+      void (async () => {
+        for (const item of BASKET_15M) {
+          if (item.code === symbol) continue;
+          const openForSym = positions.some(
+            (p) => !p.isSold && p.underlyingSymbol === item.code,
+          );
+          if (openForSym) continue;
+
+          try {
+            const res = await socket.request<{
+              candles?: Array<Record<string, unknown>>;
+            }>(
+              {
+                ticks_history: item.code,
+                style: 'candles',
+                granularity: 900,
+                count: 150,
+                end: 'latest',
+              },
+              { expectedGeneration: connectionGeneration, timeoutMs: 6_000 },
+            );
+            const bars = normalizeCandleHistory(res.candles);
+            const evalBasket = evaluateQuantSignal({
+              symbol: item.code,
+              market: item.market,
+              bars,
+              accountBalance,
+              positions,
+              stakeLimits,
+              riskPctOfBalance: riskPct,
+              timeframe: '15m',
+            });
+            if (
+              evalBasket.signalDirection &&
+              !evalBasket.riskPlan.circuitBreakerTripped
+            ) {
+              onSelectSymbol(item.code);
+              onApplyQuantTicketSetup({
+                contractFamily: 'multipliers',
+                multiplier: evalBasket.riskPlan.recommendedMultiplier,
+                amount: evalBasket.riskPlan.recommendedStake,
+                takeProfit: evalBasket.riskPlan.recommendedTakeProfit,
+                stopLoss: evalBasket.riskPlan.recommendedStopLoss,
+              });
+              appendLog(
+                'entry',
+                `15M Basket Auto-Pilot: Breakout on ${item.name} (${item.code}). Executing ${evalBasket.signalDirection === 'rise' ? 'MULTUP' : 'MULTDOWN'} ${evalBasket.riskPlan.recommendedMultiplier}x…`,
+              );
+              void onExecuteDirectBuy(evalBasket.signalDirection);
+              break;
+            }
+          } catch {
+            // Background scan transient non-fatal
+          }
+        }
+      })();
     }
   }, [
     autoPilotArmed,
@@ -377,6 +454,13 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     positions,
     symbol,
     currency,
+    riskPct,
+    selectedTimeframe,
+    socket,
+    connectionGeneration,
+    stakeLimits,
+    accountBalance,
+    onSelectSymbol,
     onApplyQuantTicketSetup,
     onExecuteDirectBuy,
     onSellAtMarket,
@@ -389,44 +473,40 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       multiplier: evaluation.riskPlan.recommendedMultiplier,
       amount: evaluation.riskPlan.recommendedStake,
       takeProfit: evaluation.riskPlan.recommendedTakeProfit,
-      stopLoss: null,
+      stopLoss: evaluation.riskPlan.recommendedStopLoss,
     });
     appendLog(
       'info',
-      `Applied 100x Multiplier + Quarter-Kelly 1R stake (${evaluation.riskPlan.recommendedStake} ${currency}) to Order Ticket.`,
+      `Applied ${evaluation.riskPlan.recommendedMultiplier}x Multiplier + Quarter-Kelly 1R stake (${evaluation.riskPlan.recommendedStake} ${currency}) to Order Ticket.`,
     );
   };
 
-  // Scan all 4 non-random alpha markets in parallel and log live signals
+  // Scan all basket markets in parallel and log live signals
   const handleScanAllAlphaMarkets = async () => {
     const isSocketReady =
       connectionStatus === 'ready_public' ||
       connectionStatus === 'ready_authenticated';
     if (!isSocketReady || scanningBasket) return;
 
+    const is15mMode = selectedTimeframe === '15m';
+    const targetBasket = is15mMode ? BASKET_15M : BASKET_1H;
+
     setScanningBasket(true);
     appendLog(
       'info',
-      'Scanning 1h closed candles across BTC/USD, ETH/USD, Gold XAU/USD, and US Tech 100…',
+      `Scanning ${selectedTimeframe.toUpperCase()} closed candles across ${targetBasket.map((b) => b.name).join(', ')}…`,
     );
-
-    const basket = [
-      { code: 'cryBTCUSD', name: 'BTC/USD', market: 'cryptocurrency' },
-      { code: 'cryETHUSD', name: 'ETH/USD', market: 'cryptocurrency' },
-      { code: 'frxXAUUSD', name: 'Gold XAU/USD', market: 'commodities' },
-      { code: 'OTC_NDX', name: 'US Tech 100', market: 'indices' },
-    ];
 
     try {
       let triggeredSymbol: string | null = null;
-      for (const item of basket) {
+      for (const item of targetBasket) {
         const res = await socket.request<{
           candles?: Array<Record<string, unknown>>;
         }>(
           {
             ticks_history: item.code,
             style: 'candles',
-            granularity: 3600,
+            granularity,
             count: 250,
             end: 'latest',
           },
@@ -440,6 +520,8 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           accountBalance,
           positions,
           stakeLimits,
+          riskPctOfBalance: riskPct,
+          timeframe: selectedTimeframe,
         });
         const adxStr = evalRes.indicators
           ? `ADX=${evalRes.indicators.adx14.toFixed(1)}, ATR=${evalRes.indicators.atrPct.toFixed(2)}%`
@@ -481,7 +563,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       multiplier: evaluation.riskPlan.recommendedMultiplier,
       amount: evaluation.riskPlan.recommendedStake,
       takeProfit: evaluation.riskPlan.recommendedTakeProfit,
-      stopLoss: null,
+      stopLoss: evaluation.riskPlan.recommendedStopLoss,
     });
     appendLog(
       'entry',
@@ -668,14 +750,13 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
             <>
               <strong>
                 {autoPilotArmed
-                  ? `🟢 Demo Auto-Pilot is ARMED on ${symbol} (Next 1h Bar Close in ${nextBarCountdown}):`
-                  : `⚪ Demo Auto-Pilot Ready (${symbol} · Next 1h Bar Close in ${nextBarCountdown}):`}
+                  ? `🟢 Demo Auto-Pilot is ARMED on ${symbol} (Next ${selectedTimeframe.toUpperCase()} Bar Close in ${nextBarCountdown}):`
+                  : `⚪ Demo Auto-Pilot Ready (${symbol} · Next ${selectedTimeframe.toUpperCase()} Bar Close in ${nextBarCountdown}):`}
               </strong>{' '}
-              Because this strategy trades on <strong>closed 1-hour candles</strong>{' '}
-              (not random ticks), the bot automatically enters when an hourly
-              candle closes with a confirmed breakout or pullback. Don&apos;t
+              Because this strategy trades on <strong>closed {selectedTimeframe.toUpperCase()} candles</strong>{' '}
+              (not random ticks), the bot automatically enters when a {selectedTimeframe === '15m' ? '15-minute' : selectedTimeframe === '5m' ? '5-minute' : '1-hour'} candle closes with a confirmed breakout. Don&apos;t
               want to wait {nextBarCountdown}? Use the instant buttons on the
-              right to scan all 4 markets or test-fire a Demo trade right now:
+              right to scan the {selectedTimeframe === '15m' ? '15M basket' : '4 markets'} or test-fire a Demo trade right now:
             </>
           )}
         </div>
@@ -689,18 +770,24 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           >
             <RefreshCw size={12} aria-hidden="true" />
             <span>
-              {scanningBasket ? 'Scanning 4 Markets…' : 'Scan All 4 Alpha Markets'}
+              {scanningBasket
+                ? selectedTimeframe === '15m'
+                  ? 'Scanning 15M Basket…'
+                  : 'Scanning 4 Markets…'
+                : selectedTimeframe === '15m'
+                  ? 'Scan 15M High-Alpha Synthetic Basket'
+                  : 'Scan All 4 Alpha Markets'}
             </span>
           </button>
 
-          {canArmAutoPilot && !evaluation.isCsprng && (
+          {canArmAutoPilot && (!evaluation.isCsprng || selectedTimeframe !== '1h') && (
             <>
               <button
                 type="button"
                 className="btn btn-rise btn-xs"
                 disabled={testFiring !== null}
                 onClick={() => void handleTestFireDemoTrade('rise')}
-                title="Immediately place a 100x MULTUP Demo trade using the 1R setup so you can see the bot execute live"
+                title={`Immediately place a ${evaluation.riskPlan.recommendedMultiplier}x MULTUP Demo trade using the 1R setup so you can see the bot execute live`}
               >
                 <Zap size={12} aria-hidden="true" />
                 <span>
@@ -714,7 +801,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
                 className="btn btn-fall btn-xs"
                 disabled={testFiring !== null}
                 onClick={() => void handleTestFireDemoTrade('fall')}
-                title="Immediately place a 100x MULTDOWN Demo trade using the 1R setup so you can see the bot execute live"
+                title={`Immediately place a ${evaluation.riskPlan.recommendedMultiplier}x MULTDOWN Demo trade using the 1R setup so you can see the bot execute live`}
               >
                 <Zap size={12} aria-hidden="true" />
                 <span>
@@ -730,14 +817,10 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
 
       {/* Quick-Switch Audited Basket */}
       <div className="quant-basket-bar">
-        <span className="quant-basket-caption">Audited Basket:</span>
-        {[
-          { code: 'cryBTCUSD', label: 'BTC/USD (24/7 · 2.99 bps)' },
-          { code: 'cryETHUSD', label: 'ETH/USD (24/7 · +21.7R)' },
-          { code: 'frxXAUUSD', label: 'Gold XAU/USD (Mon–Fri · PF 1.60)' },
-          { code: 'OTC_NDX', label: 'US Tech 100 (Mon–Fri · OOS PF 4.86)' },
-          { code: '1HZ100V', label: '1HZ100V (CSPRNG Control)' },
-        ].map((item) => (
+        <span className="quant-basket-caption">
+          {selectedTimeframe === '15m' ? '15M Synthetic Basket:' : 'Audited 1H Basket:'}
+        </span>
+        {(selectedTimeframe === '15m' ? BASKET_15M : BASKET_1H).map((item) => (
           <button
             key={item.code}
             type="button"
