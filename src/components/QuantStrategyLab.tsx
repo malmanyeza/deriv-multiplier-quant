@@ -30,12 +30,14 @@ import {
   type WalkForwardReport,
   type QuantTimeframe,
 } from '../services/quantStrategyEngine';
+import type { DirectBuyOverrideSetup } from '../hooks/useTradeLifecycle';
 
 interface QuantStrategyLabProps {
   socket: DerivSocketOwner;
   connectionStatus: ConnectionStatus;
   connectionGeneration: number;
   authenticated: boolean;
+  getCsrfToken?: () => string;
   accountType: 'demo' | 'real' | null;
   accountBalance: number;
   currency: string;
@@ -51,9 +53,24 @@ interface QuantStrategyLabProps {
     takeProfit: number | null;
     stopLoss: number | null;
   }) => void;
-  onExecuteDirectBuy: (direction: TradeDirection) => Promise<BuyWire | null>;
+  onExecuteDirectBuy: (
+    direction: TradeDirection,
+    overrideSetup?: DirectBuyOverrideSetup,
+  ) => Promise<BuyWire | null>;
   onSellAtMarket: (contractId: number) => Promise<void>;
   onStartLogin: () => void;
+}
+
+interface ServerRunnerSnapshot {
+  available: boolean;
+  armed: boolean;
+  running: boolean;
+  socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+  lastScanAt: string | null;
+  lastError: string | null;
+  recentLogs: BotAuditEntry[];
+  timeframe: QuantTimeframe;
+  riskPct: number;
 }
 
 interface BotAuditEntry {
@@ -108,9 +125,10 @@ const BASKET_1H = [
 
 const BASKET_DUAL = [
   // 15M Intraday Turbo Engine
-  { code: '1HZ100V', name: 'Vol 100 (1s)', label: '1HZ100V (15M · 30x)', market: 'synthetic_index', engine: '15m' as const },
-  { code: 'R_75', name: 'Volatility 75', label: 'R_75 (15M · 30x)', market: 'synthetic_index', engine: '15m' as const },
-  { code: '1HZ50V', name: 'Vol 50 (1s)', label: '1HZ50V (15M · 30x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: '1HZ100V', name: 'Vol 100 (1s)', label: '1HZ100V (15M · 40x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: 'R_75', name: 'Volatility 75', label: 'R_75 (15M · 50x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: '1HZ50V', name: 'Vol 50 (1s)', label: '1HZ50V (15M · 80x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: 'R_100', name: 'Volatility 100', label: 'R_100 (15M · 40x)', market: 'synthetic_index', engine: '15m' as const },
   // 1H Macro Quant Engine
   { code: 'cryBTCUSD', name: 'BTC/USD', label: 'BTC/USD (1H · 100x)', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'cryETHUSD', name: 'ETH/USD', label: 'ETH/USD (1H · 100x)', market: 'cryptocurrency', engine: '1h' as const },
@@ -123,6 +141,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
   connectionStatus,
   connectionGeneration,
   authenticated,
+  getCsrfToken,
   accountType,
   accountBalance,
   currency,
@@ -157,10 +176,13 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       return false;
     }
   });
+  const [serverStatus, setServerStatus] = useState<ServerRunnerSnapshot | null>(null);
+  const [togglingAutoPilot, setTogglingAutoPilot] = useState<boolean>(false);
   const [scanningBasket, setScanningBasket] = useState<boolean>(false);
   const [testFiring, setTestFiring] = useState<TradeDirection | null>(null);
   const [nextBarCountdown, setNextBarCountdown] = useState<string>('—');
   const [auditLogs, setAuditLogs] = useState<BotAuditEntry[]>([]);
+  const hydratedServerOnceRef = useRef<boolean>(false);
 
   const isSyntheticSymbol = symbol.startsWith('1HZ') || symbol.startsWith('R_');
   const granularity =
@@ -339,6 +361,90 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
 
   const [riskPct, setRiskPct] = useState<number>(0.01);
 
+  const syncServerAutoPilot = useCallback(async () => {
+    try {
+      const res = await fetch('/api/quant/autopilot', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = (await res.json()) as ServerRunnerSnapshot;
+      setServerStatus(data);
+      if (data.available) {
+        if (!hydratedServerOnceRef.current) {
+          hydratedServerOnceRef.current = true;
+          setAutoPilotArmed(data.armed);
+          try {
+            localStorage.setItem('deriv_quant_autopilot_armed', String(data.armed));
+          } catch {
+            // ignore
+          }
+          if (
+            data.timeframe === 'dual' ||
+            data.timeframe === '15m' ||
+            data.timeframe === '1h' ||
+            data.timeframe === '5m'
+          ) {
+            setSelectedTimeframe(data.timeframe);
+          }
+          if (typeof data.riskPct === 'number' && Number.isFinite(data.riskPct)) {
+            setRiskPct(data.riskPct);
+          }
+        }
+      }
+    } catch {
+      // Backend polling non-fatal
+    }
+  }, []);
+
+  useEffect(() => {
+    void syncServerAutoPilot();
+    const timer = window.setInterval(() => {
+      void syncServerAutoPilot();
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [syncServerAutoPilot]);
+
+  const pushServerAutoPilot = useCallback(
+    async (opts: { armed: boolean; timeframe?: QuantTimeframe; riskPct?: number }) => {
+      if (!serverStatus?.available) return;
+      setTogglingAutoPilot(true);
+      try {
+        const csrf = getCsrfToken ? getCsrfToken() : '';
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (csrf) headers['X-CSRF-Token'] = csrf;
+
+        let res = await fetch('/api/quant/autopilot', {
+          method: 'POST',
+          credentials: 'include',
+          headers,
+          body: JSON.stringify(opts),
+        });
+
+        if (res.status === 403) {
+          // Session may have restarted on Render; refresh /api/auth/status once
+          await fetch('/api/auth/status', { credentials: 'include' }).catch(() => {});
+          const refreshedCsrf = getCsrfToken ? getCsrfToken() : '';
+          if (refreshedCsrf) headers['X-CSRF-Token'] = refreshedCsrf;
+          res = await fetch('/api/quant/autopilot', {
+            method: 'POST',
+            credentials: 'include',
+            headers,
+            body: JSON.stringify(opts),
+          });
+        }
+
+        if (res.ok) {
+          const data = (await res.json()) as ServerRunnerSnapshot;
+          setServerStatus(data);
+          setAutoPilotArmed(data.armed);
+        }
+      } catch {
+        // Non-fatal
+      } finally {
+        setTogglingAutoPilot(false);
+      }
+    },
+    [serverStatus?.available, getCsrfToken],
+  );
+
   const evaluation = useMemo(
     () =>
       evaluateQuantSignal({
@@ -391,8 +497,9 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     }
   }, [autoPilotArmed, authenticated, accountType, appendLog]);
 
-  // Auto-Pilot execution loop on newly closed 1h bar
+  // Browser fallback Auto-Pilot execution loop (active only when 24/7 Server Runner is unavailable)
   useEffect(() => {
+    if (serverStatus?.available) return;
     if (!autoPilotArmed || !canArmAutoPilot) return;
     const barTime = evaluation.indicators?.barTime ?? 0;
     if (!barTime || barTime === lastAutoActedBarTimeRef.current) return;
@@ -421,6 +528,13 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
 
       lastAutoActedBarTimeRef.current = barTime;
       const dir = evaluation.signalDirection;
+      const setup: DirectBuyOverrideSetup = {
+        underlyingSymbol: symbol,
+        multiplier: evaluation.riskPlan.recommendedMultiplier,
+        amount: evaluation.riskPlan.recommendedStake,
+        takeProfit: evaluation.riskPlan.recommendedTakeProfit,
+        stopLoss: evaluation.riskPlan.recommendedStopLoss,
+      };
       onApplyQuantTicketSetup({
         contractFamily: 'multipliers',
         multiplier: evaluation.riskPlan.recommendedMultiplier,
@@ -433,7 +547,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         'entry',
         `Auto-Pilot executing ${dir === 'rise' ? 'MULTUP' : 'MULTDOWN'} ${evaluation.riskPlan.recommendedMultiplier}x on ${symbol} (1R = ${evaluation.riskPlan.recommendedStake} ${currency})…`,
       );
-      void onExecuteDirectBuy(dir).then((receipt) => {
+      void onExecuteDirectBuy(dir, setup).then((receipt) => {
         if (receipt) {
           appendLog(
             'entry',
@@ -485,6 +599,13 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
               evalBasket.signalDirection &&
               !evalBasket.riskPlan.circuitBreakerTripped
             ) {
+              const basketSetup: DirectBuyOverrideSetup = {
+                underlyingSymbol: item.code,
+                multiplier: evalBasket.riskPlan.recommendedMultiplier,
+                amount: evalBasket.riskPlan.recommendedStake,
+                takeProfit: evalBasket.riskPlan.recommendedTakeProfit,
+                stopLoss: evalBasket.riskPlan.recommendedStopLoss,
+              };
               onSelectSymbol(item.code);
               onApplyQuantTicketSetup({
                 contractFamily: 'multipliers',
@@ -497,7 +618,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
                 'entry',
                 `${item.engine.toUpperCase()} Auto-Pilot: Breakout on ${item.name} (${item.code}). Executing ${evalBasket.signalDirection === 'rise' ? 'MULTUP' : 'MULTDOWN'} ${evalBasket.riskPlan.recommendedMultiplier}x…`,
               );
-              void onExecuteDirectBuy(evalBasket.signalDirection);
+              void onExecuteDirectBuy(evalBasket.signalDirection, basketSetup);
               break;
             }
           } catch {
@@ -507,6 +628,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       })();
     }
   }, [
+    serverStatus?.available,
     autoPilotArmed,
     canArmAutoPilot,
     evaluation,
@@ -618,10 +740,29 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     }
   };
 
+  const handleSelectTimeframe = (tf: QuantTimeframe) => {
+    setSelectedTimeframe(tf);
+    try {
+      localStorage.setItem('deriv_quant_timeframe', tf);
+    } catch {
+      // ignore
+    }
+    if (serverStatus?.available && autoPilotArmed) {
+      void pushServerAutoPilot({ armed: true, timeframe: tf, riskPct });
+    }
+  };
+
   // Immediately test-fire a Demo Multiplier trade so user can verify automated execution without waiting 60m
   const handleTestFireDemoTrade = async (dir: TradeDirection) => {
     if (!canArmAutoPilot || testFiring) return;
     setTestFiring(dir);
+    const setup: DirectBuyOverrideSetup = {
+      underlyingSymbol: symbol,
+      multiplier: evaluation.riskPlan.recommendedMultiplier,
+      amount: evaluation.riskPlan.recommendedStake,
+      takeProfit: evaluation.riskPlan.recommendedTakeProfit,
+      stopLoss: evaluation.riskPlan.recommendedStopLoss,
+    };
     onApplyQuantTicketSetup({
       contractFamily: 'multipliers',
       multiplier: evaluation.riskPlan.recommendedMultiplier,
@@ -634,7 +775,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       `Test-Firing Demo ${dir === 'rise' ? 'MULTUP (Up)' : 'MULTDOWN (Down)'} ${evaluation.riskPlan.recommendedMultiplier}x on ${symbol} (Stake: ${evaluation.riskPlan.recommendedStake.toFixed(2)} ${currency})…`,
     );
     try {
-      const receipt = await onExecuteDirectBuy(dir);
+      const receipt = await onExecuteDirectBuy(dir, setup);
       if (receipt) {
         appendLog(
           'entry',
@@ -713,7 +854,11 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
               className={`btn btn-xs ${
                 autoPilotArmed ? 'btn-rise' : 'btn-primary'
               }`}
-              disabled={!canArmAutoPilot || (evaluation.isCsprng && selectedTimeframe === '1h')}
+              disabled={
+                !canArmAutoPilot ||
+                togglingAutoPilot ||
+                (evaluation.isCsprng && selectedTimeframe === '1h')
+              }
               onClick={() => {
                 const next = !autoPilotArmed;
                 setAutoPilotArmed(next);
@@ -722,26 +867,40 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
                 } catch {
                   // ignore
                 }
-                appendLog(
-                  'info',
-                  next
-                    ? `Demo Auto-Pilot ARMED on ${symbol} [${selectedTimeframe.toUpperCase()}]. Watching candle closes (next evaluation in ${nextBarCountdown}) with Quarter-Kelly 1R = ${evaluation.riskPlan.recommendedStake} ${currency}.`
-                    : 'Demo Auto-Pilot DISARMED.',
-                );
+                if (serverStatus?.available) {
+                  void pushServerAutoPilot({
+                    armed: next,
+                    timeframe: selectedTimeframe,
+                    riskPct,
+                  });
+                } else {
+                  appendLog(
+                    'info',
+                    next
+                      ? `Demo Auto-Pilot ARMED on ${symbol} [${selectedTimeframe.toUpperCase()}]. Watching candle closes (next evaluation in ${nextBarCountdown}) with Quarter-Kelly 1R = ${evaluation.riskPlan.recommendedStake} ${currency}.`
+                      : 'Demo Auto-Pilot DISARMED.',
+                  );
+                }
               }}
               title={
                 accountType !== 'demo'
                   ? 'Safety Lock: Switch to your Demo account in the top header to arm Auto-Pilot'
-                  : `Toggle automated ${selectedTimeframe.toUpperCase()} closed-bar execution on Demo account`
+                  : serverStatus?.available
+                    ? `Toggle 24/7 Server Auto-Pilot (${selectedTimeframe.toUpperCase()}) on Demo account`
+                    : `Toggle automated ${selectedTimeframe.toUpperCase()} closed-bar execution on Demo account`
               }
             >
               <Play size={12} aria-hidden="true" />
               <span>
                 {autoPilotArmed
-                  ? `Auto-Pilot ARMED (Next ${selectedTimeframe.toUpperCase()} Close: ${nextBarCountdown})`
+                  ? serverStatus?.available
+                    ? `24/7 Server Auto-Pilot ARMED (${selectedTimeframe.toUpperCase()} · ${nextBarCountdown})`
+                    : `Auto-Pilot ARMED (Next ${selectedTimeframe.toUpperCase()} Close: ${nextBarCountdown})`
                   : accountType === 'real'
                     ? 'Locked (Switch to Demo Account)'
-                    : `Arm Demo Auto-Pilot (${selectedTimeframe.toUpperCase()})`}
+                    : serverStatus?.available
+                      ? `Arm 24/7 Server Auto-Pilot (${selectedTimeframe.toUpperCase()})`
+                      : `Arm Demo Auto-Pilot (${selectedTimeframe.toUpperCase()})`}
               </span>
             </button>
           )}
@@ -755,10 +914,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           <button
             type="button"
             className={`btn btn-xs ${selectedTimeframe === 'dual' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => {
-              setSelectedTimeframe('dual');
-              try { localStorage.setItem('deriv_quant_timeframe', 'dual'); } catch {}
-            }}
+            onClick={() => handleSelectTimeframe('dual')}
             title="Parallel 15M Turbo + 1H Macro execution with shared 3-position risk cap"
           >
             ⚡ Dual-Engine Hybrid (15M + 1H)
@@ -766,30 +922,21 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
           <button
             type="button"
             className={`btn btn-xs ${selectedTimeframe === '1h' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => {
-              setSelectedTimeframe('1h');
-              try { localStorage.setItem('deriv_quant_timeframe', '1h'); } catch {}
-            }}
+            onClick={() => handleSelectTimeframe('1h')}
           >
             1H Macro (Recommended)
           </button>
           <button
             type="button"
             className={`btn btn-xs ${selectedTimeframe === '15m' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => {
-              setSelectedTimeframe('15m');
-              try { localStorage.setItem('deriv_quant_timeframe', '15m'); } catch {}
-            }}
+            onClick={() => handleSelectTimeframe('15m')}
           >
             15M Intraday Turbo
           </button>
           <button
             type="button"
             className={`btn btn-xs ${selectedTimeframe === '5m' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => {
-              setSelectedTimeframe('5m');
-              try { localStorage.setItem('deriv_quant_timeframe', '5m'); } catch {}
-            }}
+            onClick={() => handleSelectTimeframe('5m')}
           >
             5M Micro Scalp
           </button>
@@ -839,13 +986,26 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
             <>
               <strong>
                 {autoPilotArmed
-                  ? `🟢 Demo Auto-Pilot is ARMED on ${symbol} (Next ${selectedTimeframe.toUpperCase()} Bar Close in ${nextBarCountdown}):`
+                  ? serverStatus?.available
+                    ? `🟢 24/7 Server Auto-Pilot is ARMED (${serverStatus.socketStatus === 'connected' ? 'Server Socket Online' : `Socket: ${serverStatus.socketStatus}`} · Next ${selectedTimeframe.toUpperCase()} Close: ${nextBarCountdown}):`
+                    : `🟢 Demo Auto-Pilot is ARMED on ${symbol} (Next ${selectedTimeframe.toUpperCase()} Bar Close in ${nextBarCountdown}):`
                   : `⚪ Demo Auto-Pilot Ready (${symbol} · Next ${selectedTimeframe.toUpperCase()} Bar Close in ${nextBarCountdown}):`}
               </strong>{' '}
-              Because this strategy trades on <strong>closed {selectedTimeframe.toUpperCase()} candles</strong>{' '}
-              (not random ticks), the bot automatically enters when a {selectedTimeframe === '15m' ? '15-minute' : selectedTimeframe === '5m' ? '5-minute' : '1-hour'} candle closes with a confirmed breakout. Don&apos;t
-              want to wait {nextBarCountdown}? Use the instant buttons on the
-              right to scan the {selectedTimeframe === '15m' ? '15M basket' : '4 markets'} or test-fire a Demo trade right now:
+              {serverStatus?.available ? (
+                <>
+                  Running directly on the backend server via Deriv PAT + Supabase config — trades continue <strong>even if you close this tab</strong>.
+                  {serverStatus.lastScanAt
+                    ? ` Last server scan: ${new Date(serverStatus.lastScanAt).toLocaleTimeString()}.`
+                    : ''}
+                </>
+              ) : (
+                <>
+                  Because this strategy trades on <strong>closed {selectedTimeframe.toUpperCase()} candles</strong>{' '}
+                  (not random ticks), the bot automatically enters when a {selectedTimeframe === '15m' ? '15-minute' : selectedTimeframe === '5m' ? '5-minute' : '1-hour'} candle closes with a confirmed breakout. Don&apos;t
+                  want to wait {nextBarCountdown}? Use the instant buttons on the
+                  right to scan the {selectedTimeframe === '15m' ? '15M basket' : '4 markets'} or test-fire a Demo trade right now:
+                </>
+              )}
             </>
           )}
         </div>
@@ -1006,7 +1166,16 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
                   key={opt.label}
                   type="button"
                   className={`chip-btn ${riskPct === opt.val ? 'active' : ''}`}
-                  onClick={() => setRiskPct(opt.val)}
+                  onClick={() => {
+                    setRiskPct(opt.val);
+                    if (serverStatus?.available && autoPilotArmed) {
+                      void pushServerAutoPilot({
+                        armed: true,
+                        timeframe: selectedTimeframe,
+                        riskPct: opt.val,
+                      });
+                    }
+                  }}
                 >
                   {opt.label}
                 </button>
@@ -1125,9 +1294,9 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         </table>
       </div>
 
-      {auditLogs.length > 0 && (
+      {(auditLogs.length > 0 || (serverStatus?.recentLogs?.length ?? 0) > 0) && (
         <div className="quant-audit-log tabular">
-          {auditLogs.slice(0, 4).map((entry) => (
+          {[...auditLogs, ...(serverStatus?.recentLogs ?? [])].slice(0, 6).map((entry) => (
             <div key={entry.id} className={`quant-log-item log-${entry.type}`}>
               <span className="muted-note">[{entry.time}]</span>{' '}
               <span>{entry.message}</span>

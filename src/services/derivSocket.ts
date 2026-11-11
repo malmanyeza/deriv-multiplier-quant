@@ -154,6 +154,24 @@ export class DerivSocketOwner {
     return this.openGeneration(false);
   }
 
+  /**
+   * Immediately triggers a fresh connection attempt if the socket is disconnected/reconnecting
+   * (e.g. when a browser tab wakes from sleep or network comes back online).
+   */
+  reconnectNow(): void {
+    if (this.disposed || this.isSocketOpen()) return;
+    if (this.status === 'connecting' || this.status === 'authenticating') return;
+
+    this.reconnectAttempt = 0;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    void this.openGeneration(true).catch(() => {
+      // Handled inside openGeneration & scheduleReconnect
+    });
+  }
+
   private async openGeneration(isReconnect: boolean): Promise<number> {
     if (this.disposed) {
       throw new DerivProtocolError('Disposed', 'Socket owner has been disposed.');
@@ -246,18 +264,21 @@ export class DerivSocketOwner {
   private scheduleReconnect(): void {
     if (this.disposed || this.reconnectTimer) return;
     if (this.reconnectAttempt >= 6) {
-      this.setStatus('error', 'Unable to reconnect to market gateway. Click Reconnect to retry.');
-      return;
+      this.setStatus(
+        'reconnecting',
+        'Connection interrupted (network or server waking up). Retrying automatically…',
+      );
     }
-    const baseMs = Math.min(10_000, 600 * 2 ** this.reconnectAttempt);
-    const jitterMs = Math.floor(Math.random() * 250);
+    const exp = Math.min(this.reconnectAttempt, 6);
+    const baseMs = Math.min(30_000, 800 * 2 ** exp);
+    const jitterMs = Math.floor(Math.random() * 400);
     this.reconnectAttempt += 1;
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (!this.disposed) {
         void this.openGeneration(true).catch(() => {
-          // Handled inside openGeneration
+          // Handled inside openGeneration & next scheduleReconnect
         });
       }
     }, baseMs + jitterMs);

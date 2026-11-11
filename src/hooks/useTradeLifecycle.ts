@@ -12,7 +12,10 @@ import type {
   TradeDirection,
 } from '../types/deriv';
 import { DerivProtocolError, type DerivSocketOwner } from '../services/derivSocket';
-import type { RiseFallSymbolRules } from '../services/marketData';
+import {
+  fetchSymbolRiseFallRules,
+  type RiseFallSymbolRules,
+} from '../services/marketData';
 import {
   buildRiseFallProposal,
   buildSelectionKey,
@@ -72,12 +75,21 @@ export interface PendingConfirmation {
   pricedAtMs: number;
 }
 
+export interface DirectBuyOverrideSetup {
+  underlyingSymbol?: string;
+  multiplier?: number;
+  amount?: number;
+  takeProfit?: number | null;
+  stopLoss?: number | null;
+}
+
 export interface UseTradeLifecycleArgs {
   socket: DerivSocketOwner;
   connectionStatus: ConnectionStatus;
   connectionGeneration: number;
   authenticated: boolean;
   accountId: string | null;
+  getCsrfToken?: () => string;
   currency: string;
   contractFamily?: ContractFamily;
   underlyingSymbol: string;
@@ -99,6 +111,7 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
     connectionGeneration,
     authenticated,
     accountId,
+    getCsrfToken,
     currency,
     contractFamily = 'rise_fall',
     underlyingSymbol,
@@ -112,6 +125,21 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
     takeProfit = null,
     stopLoss = null,
   } = args;
+
+  const postQuantTrade = useCallback(
+    (payload: Record<string, unknown>) => {
+      const csrf = getCsrfToken ? getCsrfToken() : '';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (csrf) headers['X-CSRF-Token'] = csrf;
+      void fetch('/api/quant/trades', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    },
+    [getCsrfToken],
+  );
 
   const [riseQuote, setRiseQuote] = useState<DirectionQuote | null>(null);
   const [fallQuote, setFallQuote] = useState<DirectionQuote | null>(null);
@@ -564,29 +592,25 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
           if (norm) {
             upsertPosition(norm);
             if (norm.isSold) {
-              void fetch('/api/quant/trades', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  contract_id: norm.contractId,
-                  account_id: accountId || 'demo',
-                  symbol: norm.underlyingSymbol,
-                  direction: norm.contractType === 'MULTUP' ? 'rise' : 'fall',
-                  multiplier: norm.multiplier || 30,
-                  stake: norm.buyPrice,
-                  entry_price: norm.entrySpot,
-                  exit_price: norm.exitSpot || norm.currentSpot,
-                  profit_loss: norm.profit,
-                  status: norm.status,
-                  exit_reason: norm.status,
-                  timeframe: '15m',
-                  engine:
-                    norm.underlyingSymbol.startsWith('1HZ') ||
-                    norm.underlyingSymbol.startsWith('R_')
-                      ? '15M Turbo'
-                      : '1H Macro',
-                }),
-              }).catch(() => {});
+              postQuantTrade({
+                contract_id: norm.contractId,
+                account_id: accountId || 'demo',
+                symbol: norm.underlyingSymbol,
+                direction: norm.contractType === 'MULTUP' ? 'rise' : 'fall',
+                multiplier: norm.multiplier || 40,
+                stake: norm.buyPrice,
+                entry_price: norm.entrySpot,
+                exit_price: norm.exitSpot || norm.currentSpot,
+                profit_loss: norm.profit,
+                status: norm.status,
+                exit_reason: norm.status,
+                timeframe: '15m',
+                engine:
+                  norm.underlyingSymbol.startsWith('1HZ') ||
+                  norm.underlyingSymbol.startsWith('R_')
+                    ? '15M Turbo'
+                    : '1H Macro',
+              });
             }
           }
         },
@@ -881,26 +905,22 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
 
       if (res.buy) {
         setLastReceipt(res.buy);
-        void fetch('/api/quant/trades', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contract_id: res.buy.contract_id,
-            account_id: accountId || 'demo',
-            symbol: confirmation.underlyingSymbol,
-            direction: confirmation.direction,
-            multiplier: confirmation.multiplier || 30,
-            stake: confirmation.askPrice,
-            entry_price: confirmation.spot,
-            status: 'open',
-            timeframe: '15m',
-            engine:
-              confirmation.underlyingSymbol.startsWith('1HZ') ||
-              confirmation.underlyingSymbol.startsWith('R_')
-                ? '15M Turbo'
-                : '1H Macro',
-          }),
-        }).catch(() => {});
+        postQuantTrade({
+          contract_id: res.buy.contract_id,
+          account_id: accountId || 'demo',
+          symbol: confirmation.underlyingSymbol,
+          direction: confirmation.direction,
+          multiplier: confirmation.multiplier || 40,
+          stake: confirmation.askPrice,
+          entry_price: confirmation.spot,
+          status: 'open',
+          timeframe: '15m',
+          engine:
+            confirmation.underlyingSymbol.startsWith('1HZ') ||
+            confirmation.underlyingSymbol.startsWith('R_')
+              ? '15M Turbo'
+              : '1H Macro',
+        });
         // Ensure individual contract state is fetched immediately alongside stream updates
         void socket
           .request(
@@ -1008,16 +1028,12 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
           },
           { expectedGeneration: connectionGeneration, timeoutMs: 10_000 },
         );
-        void fetch('/api/quant/trades', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contract_id: contractId,
-            account_id: accountId || 'demo',
-            status: 'sold',
-            exit_reason: 'manual_market_sell',
-          }),
-        }).catch(() => {});
+        postQuantTrade({
+          contract_id: contractId,
+          account_id: accountId || 'demo',
+          status: 'sold',
+          exit_reason: 'manual_market_sell',
+        });
       } catch (err) {
         // Reconcile `is_sold` with `proposal_open_contract` before reporting
         try {
@@ -1055,9 +1071,14 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
    * Direct programmatic purchase for the Demo Quant Strategy Runner:
    * Always requests a fresh proposal on the authenticated socket, verifies `ask_price`,
    * and executes `buy` with 1x `InvalidContractProposal` recovery.
+   * When `overrideSetup` is passed, builds the Multiplier proposal directly from
+   * those values rather than waiting for React state to re-render.
    */
   const executeDirectBuy = useCallback(
-    async (direction: TradeDirection): Promise<BuyWire | null> => {
+    async (
+      direction: TradeDirection,
+      overrideSetup?: DirectBuyOverrideSetup,
+    ): Promise<BuyWire | null> => {
       if (buyLockRef.current || connectionStatus !== 'ready_authenticated' || !authenticated) {
         return null;
       }
@@ -1067,11 +1088,80 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
       setTradeError(null);
 
       try {
-        const { proposal: freshProp } = await requestFreshProposalForDirection(
-          direction,
-          selectionKey,
-          connectionGeneration,
-        );
+        const targetSymbol = overrideSetup?.underlyingSymbol ?? underlyingSymbol;
+        let usedMultiplier = overrideSetup?.multiplier ?? multiplier;
+        let usedAmount = overrideSetup?.amount ?? amount;
+
+        const requestDirectProposal = async (): Promise<ProposalWire> => {
+          if (!overrideSetup) {
+            const { proposal } = await requestFreshProposalForDirection(
+              direction,
+              selectionKey,
+              connectionGeneration,
+            );
+            return proposal;
+          }
+
+          const targetRules =
+            rules && rules.underlyingSymbol === targetSymbol
+              ? rules
+              : await fetchSymbolRiseFallRules(socket, targetSymbol);
+
+          if (!targetRules.supportsMultipliers || targetRules.multiplierRange.length === 0) {
+            throw new DerivProtocolError(
+              'UnsupportedMarket',
+              `Multipliers are not currently supported on ${targetSymbol}.`,
+            );
+          }
+
+          const sortedMults = [...targetRules.multiplierRange].sort((a, b) => a - b);
+          const desiredMult = overrideSetup.multiplier ?? targetRules.defaultMultiplier;
+          usedMultiplier = sortedMults.includes(desiredMult)
+            ? desiredMult
+            : (sortedMults.find((m) => m >= desiredMult) ?? sortedMults[0]);
+
+          usedAmount = Number(Math.max(1, overrideSetup.amount ?? amount).toFixed(2));
+          const stopLossRaw =
+            overrideSetup.stopLoss !== undefined ? overrideSetup.stopLoss : stopLoss;
+          const safeStopLoss =
+            stopLossRaw !== null && stopLossRaw > 0 && stopLossRaw < usedAmount
+              ? Number(stopLossRaw.toFixed(2))
+              : null;
+          const tpRaw =
+            overrideSetup.takeProfit !== undefined ? overrideSetup.takeProfit : takeProfit;
+          const safeTp =
+            tpRaw !== null && tpRaw > 0 ? Number(tpRaw.toFixed(2)) : null;
+
+          const built = buildMultipliersProposal(
+            {
+              underlyingSymbol: targetSymbol,
+              direction,
+              amount: usedAmount,
+              currency,
+              multiplier: usedMultiplier,
+              takeProfit: safeTp,
+              stopLoss: safeStopLoss,
+            },
+            targetRules,
+          );
+          if (!built.ok) {
+            throw new DerivProtocolError('InvalidSelection', built.message);
+          }
+
+          const propRes = await socket.request<{ proposal?: ProposalWire }>(
+            built.payload as unknown as Record<string, unknown>,
+            {
+              expectedGeneration: connectionGeneration,
+              timeoutMs: 8_000,
+            },
+          );
+          if (!propRes.proposal || typeof propRes.proposal.id !== 'string') {
+            throw new DerivProtocolError('MissingProposal', 'Unable to obtain a fresh contract quote.');
+          }
+          return propRes.proposal;
+        };
+
+        let freshProp = await requestDirectProposal();
         const ask = Number(freshProp.ask_price);
         if (!Number.isFinite(ask) || ask <= 0) {
           throw new DerivProtocolError('InvalidAskPrice', 'Invalid proposal ask price.');
@@ -1085,38 +1175,30 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
           );
         } catch (firstErr) {
           if (!isUnknownProposalError(firstErr)) throw firstErr;
-          const { proposal: retryProp } = await requestFreshProposalForDirection(
-            direction,
-            selectionKey,
-            connectionGeneration,
-          );
+          freshProp = await requestDirectProposal();
           res = await socket.request<{ buy?: BuyWire }>(
-            { buy: retryProp.id, price: Number(retryProp.ask_price) },
+            { buy: freshProp.id, price: Number(freshProp.ask_price) },
             { expectedGeneration: connectionGeneration, timeoutMs: 12_000 },
           );
         }
 
         if (res.buy) {
           setLastReceipt(res.buy);
-          void fetch('/api/quant/trades', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contract_id: res.buy.contract_id,
-              account_id: accountId || 'demo',
-              symbol: underlyingSymbol,
-              direction,
-              multiplier: multiplier || 30,
-              stake: ask,
-              entry_price: Number(freshProp.spot),
-              status: 'open',
-              timeframe: '15m',
-              engine:
-                underlyingSymbol.startsWith('1HZ') || underlyingSymbol.startsWith('R_')
-                  ? '15M Turbo'
-                  : '1H Macro',
-            }),
-          }).catch(() => {});
+          postQuantTrade({
+            contract_id: res.buy.contract_id,
+            account_id: accountId || 'demo',
+            symbol: targetSymbol,
+            direction,
+            multiplier: usedMultiplier || 40,
+            stake: Number(freshProp.ask_price),
+            entry_price: Number(freshProp.spot),
+            status: 'open',
+            timeframe: '15m',
+            engine:
+              targetSymbol.startsWith('1HZ') || targetSymbol.startsWith('R_')
+                ? '15M Turbo'
+                : '1H Macro',
+          });
           void socket
             .request(
               { proposal_open_contract: 1, contract_id: res.buy.contract_id },
@@ -1152,10 +1234,19 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
     [
       connectionStatus,
       authenticated,
+      underlyingSymbol,
+      multiplier,
+      amount,
+      rules,
+      socket,
+      stopLoss,
+      takeProfit,
+      currency,
       requestFreshProposalForDirection,
       selectionKey,
       connectionGeneration,
-      socket,
+      accountId,
+      postQuantTrade,
     ],
   );
 

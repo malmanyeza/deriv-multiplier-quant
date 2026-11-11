@@ -13,11 +13,13 @@ import {
   resetDemoAccountBalance,
 } from './derivClient.js';
 import {
-  getSupabase,
-  saveQuantTrade,
-  logBotAudit,
+  getRecentAuditLogs,
   getRecentTrades,
+  getSupabase,
+  logBotAudit,
+  saveQuantTrade,
 } from './supabaseClient.js';
+import { QuantServerRunner } from './quantRunner.js';
 
 dotenv.config();
 
@@ -108,6 +110,7 @@ function buildFrontendCallbackRedirect(
 export function createApp(
   config: ServerConfig = loadServerConfig(),
   store: InMemorySessionStore = new InMemorySessionStore(),
+  runner?: QuantServerRunner,
 ) {
   const app = express();
   app.disable('x-powered-by');
@@ -116,6 +119,8 @@ export function createApp(
 
   const appId = (config.derivAppId || config.derivClientId || '').trim();
   const serverPat = (config.derivPat ?? '').trim();
+  const serverRunner =
+    runner ?? new QuantServerRunner({ derivPat: serverPat, derivAppId: appId });
 
   const isOAuthConfigured = (): boolean =>
     Boolean(config.derivClientId && config.derivRedirectUri);
@@ -560,14 +565,77 @@ export function createApp(
     res.json({ ok: true });
   });
 
-  // ── Supabase Persistence Endpoints ──────────────────────────────────────────
+  // ── Supabase Persistence & 24/7 Server Auto-Pilot Endpoints ─────────────────
   app.get('/api/quant/status', (_req, res) => {
     const sb = getSupabase();
+    const runnerState = serverRunner.getStatus();
     res.json({
       supabaseConnected: Boolean(sb),
       hasUrl: Boolean(process.env.SUPABASE_URL),
       hasKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY),
+      autoPilotAvailable: runnerState.available,
+      autoPilotArmed: runnerState.armed,
+      autoPilotRunning: runnerState.running,
+      autoPilotSocketStatus: runnerState.socketStatus,
+      lastScanAt: runnerState.lastScanAt,
     });
+  });
+
+  app.get('/api/quant/autopilot', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(serverRunner.getStatus());
+  });
+
+  app.post('/api/quant/autopilot', async (req, res) => {
+    const sid = req.cookies?.[SESSION_COOKIE_NAME] as string | undefined;
+    const session = store.getOrCreateSession(sid);
+    setSessionCookie(res, session.sessionId);
+    if (!requireCsrf(req, res, session)) return;
+
+    const armed = Boolean(req.body?.armed);
+    const timeframeRaw = req.body?.timeframe;
+    const timeframe =
+      timeframeRaw === 'dual' ||
+      timeframeRaw === '15m' ||
+      timeframeRaw === '1h' ||
+      timeframeRaw === '5m'
+        ? timeframeRaw
+        : undefined;
+    const riskPct =
+      typeof req.body?.riskPct === 'number' && Number.isFinite(req.body.riskPct)
+        ? req.body.riskPct
+        : undefined;
+
+    try {
+      const status = await serverRunner.setArmed({ armed, timeframe, riskPct });
+      res.json(status);
+    } catch (err) {
+      res.status(400).json({
+        error: {
+          code: 'AutoPilotConfigError',
+          message: err instanceof Error ? err.message : 'Unable to update server Auto-Pilot.',
+        },
+      });
+    }
+  });
+
+  app.post('/api/quant/autopilot/scan', async (req, res) => {
+    const sid = req.cookies?.[SESSION_COOKIE_NAME] as string | undefined;
+    const session = store.getOrCreateSession(sid);
+    setSessionCookie(res, session.sessionId);
+    if (!requireCsrf(req, res, session)) return;
+
+    try {
+      const status = await serverRunner.triggerScanNow();
+      res.json(status);
+    } catch (err) {
+      res.status(502).json({
+        error: {
+          code: 'ScanError',
+          message: err instanceof Error ? err.message : 'Server scan failed.',
+        },
+      });
+    }
   });
 
   app.get('/api/quant/trades', async (req, res) => {
@@ -584,6 +652,13 @@ export function createApp(
 
     const saved = await saveQuantTrade(req.body);
     res.json({ ok: saved });
+  });
+
+  app.get('/api/quant/audit', async (req, res) => {
+    const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : undefined;
+    const limit = Number(req.query.limit || 30);
+    const logs = await getRecentAuditLogs(accountId, limit);
+    res.json({ logs });
   });
 
   app.post('/api/quant/audit', async (req, res) => {
@@ -610,11 +685,16 @@ export function createApp(
 const currentFile = fileURLToPath(import.meta.url);
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(currentFile)) {
   const cfg = loadServerConfig();
-  const app = createApp(cfg);
+  const runner = new QuantServerRunner({
+    derivPat: (cfg.derivPat ?? '').trim(),
+    derivAppId: (cfg.derivAppId || cfg.derivClientId || '').trim(),
+  });
+  const app = createApp(cfg, new InMemorySessionStore(), runner);
   app.listen(cfg.port, () => {
     const hasAppId = Boolean(cfg.derivAppId || cfg.derivClientId);
     console.log(
       `[BFF] Listening on http://localhost:${cfg.port} (OAuth ready: ${Boolean(cfg.derivClientId && cfg.derivRedirectUri)}, Server PAT present: ${Boolean(cfg.derivPat)}, App ID present: ${hasAppId})`,
     );
+    void runner.init();
   });
 }

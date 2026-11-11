@@ -56,6 +56,7 @@ export interface AuthContextValue {
   connectionGeneration: number;
   connectionError: string | null;
   socket: DerivSocketOwner;
+  getCsrfToken: () => string;
   startLogin: () => void;
   startSignup: () => void;
   switchAccount: (accountId: string) => Promise<void>;
@@ -113,15 +114,37 @@ export const AuthProvider: React.FC<{
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const fetchOtpUrl = useCallback(async (accountId: string): Promise<string> => {
-    const res = await fetch('/api/auth/otp', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfTokenRef.current,
-      },
-      body: JSON.stringify({ accountId }),
-    });
+    const requestOtp = async (csrf: string) =>
+      fetch('/api/auth/otp', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrf,
+        },
+        body: JSON.stringify({ accountId }),
+      });
+
+    let res = await requestOtp(csrfTokenRef.current);
+
+    // If Render restarted or session expired, re-fetch /api/auth/status once to restore CSRF & PAT session
+    if (res.status === 401 || res.status === 403) {
+      try {
+        const statusRes = await fetch('/api/auth/status', { credentials: 'include' });
+        if (statusRes.ok) {
+          const status = (await statusRes.json()) as AuthStatusResponse;
+          csrfTokenRef.current = status.csrfToken;
+          if (status.authenticated) {
+            setAuthenticated(true);
+            setAccounts(status.accounts);
+            if (status.selectedAccountId) setSelectedAccountId(status.selectedAccountId);
+            res = await requestOtp(status.csrfToken);
+          }
+        }
+      } catch {
+        // Proceed to normal error path below
+      }
+    }
 
     const data = (await res.json().catch(() => ({}))) as {
       url?: string;
@@ -154,8 +177,28 @@ export const AuthProvider: React.FC<{
       setConnectionGeneration(snap.generation);
       setConnectionError(snap.lastError);
     });
+
+    const handleWake = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      const snap = socket.getSnapshot();
+      if (snap.status === 'reconnecting' || snap.status === 'error') {
+        socket.reconnectNow();
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleWake);
+      document.addEventListener('visibilitychange', handleWake);
+    }
+
     return () => {
       off();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleWake);
+        document.removeEventListener('visibilitychange', handleWake);
+      }
       socket.dispose();
     };
   }, [socket]);
@@ -398,6 +441,8 @@ export const AuthProvider: React.FC<{
     }
   }, [socket, patConfigured]);
 
+  const getCsrfToken = useCallback(() => csrfTokenRef.current, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       loading,
@@ -414,6 +459,7 @@ export const AuthProvider: React.FC<{
       connectionGeneration,
       connectionError,
       socket,
+      getCsrfToken,
       startLogin,
       startSignup,
       switchAccount,
@@ -435,6 +481,7 @@ export const AuthProvider: React.FC<{
       connectionGeneration,
       connectionError,
       socket,
+      getCsrfToken,
       startLogin,
       startSignup,
       switchAccount,

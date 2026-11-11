@@ -117,3 +117,86 @@ export async function getRecentTrades(accountId?: string, limit = 50) {
   }
   return data || [];
 }
+
+export interface UserBotConfigRecord {
+  account_id: string;
+  selected_timeframe: string;
+  risk_pct: number;
+  max_concurrent_positions?: number;
+  circuit_breaker_max_r?: number;
+  streak_throttle_enabled?: boolean;
+  auto_pilot_armed: boolean;
+  updated_at?: string;
+}
+
+export async function getBotConfig(accountId: string): Promise<UserBotConfigRecord | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+
+  try {
+    const { data, error } = await sb
+      .from('user_bot_configs')
+      .select('*')
+      .eq('account_id', accountId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[Supabase] Failed to fetch bot config:', error.message);
+      return null;
+    }
+    return data as UserBotConfigRecord | null;
+  } catch (err) {
+    console.warn('[Supabase] Error fetching bot config:', err);
+    return null;
+  }
+}
+
+export async function saveBotConfig(config: UserBotConfigRecord): Promise<boolean> {
+  const sb = getSupabase();
+  if (!sb) return false;
+
+  try {
+    const { error } = await sb.from('user_bot_configs').upsert(
+      {
+        ...config,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'account_id' },
+    );
+    if (error) {
+      console.warn('[Supabase] Failed to save bot config:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] Error saving bot config:', err);
+    return false;
+  }
+}
+
+export async function getRecentAuditLogs(accountId?: string, limit = 30) {
+  const sb = getSupabase();
+  if (!sb) return [];
+
+  try {
+    let query = sb
+      .from('bot_audit_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (accountId) {
+      query = query.eq('account_id', accountId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('[Supabase] Failed to fetch audit logs:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.warn('[Supabase] Error fetching audit logs:', err);
+    return [];
+  }
+}

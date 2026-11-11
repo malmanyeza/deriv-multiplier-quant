@@ -8,3 +8,4 @@ coverage
 .DS_Store
 *.tsbuildinfo
 data_cache/
+env.txt

@@ -22,6 +22,7 @@ import {
   evaluateQuantSignal,
   runChronologicalWalkForward,
 } from '../services/quantStrategyEngine';
+import { pickClosestMultiplier } from '../../server/quantRunner';
 import type { AvailableContractEntry } from '../types/deriv';
 import type { UTCTimestamp } from 'lightweight-charts';
 
@@ -562,6 +563,17 @@ describe('Quant Strategy Engine (Chaos Gate, CSPRNG Block & Quarter-Kelly Risk)'
     expect(evalTripped.riskPlan.consecutiveLosses).toBe(3);
     expect(evalTripped.riskPlan.circuitBreakerTripped).toBe(true);
     expect(evalTripped.riskPlan.circuitBreakerReason).toContain('3 consecutive losses');
+  });
+
+  it('snaps unsupported preferred multipliers to the closest valid exchange multiplier', () => {
+    // 1HZ100V supports [40, 100, 200, 300, 400] -> 30 snaps to 40
+    expect(pickClosestMultiplier([40, 100, 200, 300, 400], 30, 40)).toBe(40);
+    // R_75 supports [50, 100, 200, 300, 500] -> 30 snaps to 50
+    expect(pickClosestMultiplier([50, 100, 200, 300, 500], 30, 50)).toBe(50);
+    // 1HZ50V supports [80, 200, 400, 600, 800] -> 30 snaps to 80
+    expect(pickClosestMultiplier([80, 200, 400, 600, 800], 30, 80)).toBe(80);
+    // Exact match returns itself
+    expect(pickClosestMultiplier([100, 200, 300], 100, 100)).toBe(100);
   });
 });
 

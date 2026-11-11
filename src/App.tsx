@@ -43,6 +43,7 @@ export const App: React.FC = () => {
     connectionGeneration,
     connectionError,
     socket,
+    getCsrfToken,
     startLogin,
   } = useAuth();
 
@@ -234,6 +235,7 @@ export const App: React.FC = () => {
     connectionGeneration,
     authenticated,
     accountId: selectedAccount?.account_id ?? null,
+    getCsrfToken,
     currency: quoteCurrency,
     contractFamily,
     underlyingSymbol: selectedSymbol,
@@ -322,6 +324,7 @@ export const App: React.FC = () => {
             connectionStatus={connectionStatus}
             connectionGeneration={connectionGeneration}
             authenticated={authenticated}
+            getCsrfToken={getCsrfToken}
             accountType={selectedAccount?.account_type ?? null}
             accountBalance={selectedAccount?.balance ?? 0}
             currency={quoteCurrency}
