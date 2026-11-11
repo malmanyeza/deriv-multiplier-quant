@@ -109,10 +109,8 @@ const REGIME_BADGES: Record<
 };
 
 const BASKET_15M = [
-  { code: '1HZ100V', name: 'Vol 100 (1s)', label: '1HZ100V (Vol 100 1s · 30x)', market: 'synthetic_index', engine: '15m' as const },
-  { code: 'R_75', name: 'Volatility 75', label: 'R_75 (Vol 75 · 30x)', market: 'synthetic_index', engine: '15m' as const },
-  { code: '1HZ50V', name: 'Vol 50 (1s)', label: '1HZ50V (Vol 50 1s · 30x)', market: 'synthetic_index', engine: '15m' as const },
-  { code: 'R_100', name: 'Volatility 100', label: 'R_100 (Vol 100 · 30x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: '1HZ100V', name: 'Vol 100 (1s)', label: '1HZ100V (Vol 100 1s · 40x)', market: 'synthetic_index', engine: '15m' as const },
+  { code: 'R_75', name: 'Volatility 75', label: 'R_75 (Vol 75 · 50x)', market: 'synthetic_index', engine: '15m' as const },
 ];
 
 const BASKET_1H = [
@@ -124,11 +122,9 @@ const BASKET_1H = [
 ];
 
 const BASKET_DUAL = [
-  // 15M Intraday Turbo Engine
+  // 15M Intraday Turbo Engine (verified positive 15m synthetic pair)
   { code: '1HZ100V', name: 'Vol 100 (1s)', label: '1HZ100V (15M · 40x)', market: 'synthetic_index', engine: '15m' as const },
   { code: 'R_75', name: 'Volatility 75', label: 'R_75 (15M · 50x)', market: 'synthetic_index', engine: '15m' as const },
-  { code: '1HZ50V', name: 'Vol 50 (1s)', label: '1HZ50V (15M · 80x)', market: 'synthetic_index', engine: '15m' as const },
-  { code: 'R_100', name: 'Volatility 100', label: 'R_100 (15M · 40x)', market: 'synthetic_index', engine: '15m' as const },
   // 1H Macro Quant Engine
   { code: 'cryBTCUSD', name: 'BTC/USD', label: 'BTC/USD (1H · 100x)', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'cryETHUSD', name: 'ETH/USD', label: 'ETH/USD (1H · 100x)', market: 'cryptocurrency', engine: '1h' as const },
@@ -1026,7 +1022,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
                     ? 'Scanning 15M Basket…'
                     : 'Scanning 4 Markets…'
                 : selectedTimeframe === 'dual'
-                  ? 'Scan Dual-Engine Basket (7 Assets)'
+                  ? 'Scan Dual-Engine Basket (6 Assets)'
                   : selectedTimeframe === '15m'
                     ? 'Scan 15M High-Alpha Synthetic Basket'
                     : 'Scan All 4 Alpha Markets'}

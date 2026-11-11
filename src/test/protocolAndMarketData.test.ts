@@ -576,6 +576,43 @@ describe('Quant Strategy Engine (Chaos Gate, CSPRNG Block & Quarter-Kelly Risk)'
     // Exact match returns itself
     expect(pickClosestMultiplier([100, 200, 300], 100, 100)).toBe(100);
   });
+
+  it('triggers EMA(30) trailing exit on uncapped Trend trades without impossible RSI > 58 gate', () => {
+    const bars = Array.from({ length: 130 }, (_, i) => {
+      const price = i < 120 ? 50000 + i * 20 : 52400 - (i - 119) * 180;
+      return {
+        time: (1700000000 + i * 3600) as UTCTimestamp,
+        open: price + 10,
+        high: price + 30,
+        low: price - 30,
+        close: price,
+      };
+    });
+
+    const openTrendLong = {
+      contractId: 777,
+      underlyingSymbol: 'cryBTCUSD',
+      contractType: 'MULTUP',
+      isSold: false,
+      buyPrice: 75,
+      profit: -10,
+      takeProfitPrice: null, // Uncapped trend trade
+      stopLossPrice: null,
+      purchaseTime: 1700400000,
+    } as any;
+
+    const ev = evaluateQuantSignal({
+      symbol: 'cryBTCUSD',
+      market: 'cryptocurrency',
+      bars,
+      accountBalance: 10000,
+      positions: [openTrendLong],
+      timeframe: '1h',
+    });
+
+    expect(ev.exitSignalForOpenPosition.shouldExit).toBe(true);
+    expect(ev.exitSignalForOpenPosition.contractId).toBe(777);
+  });
 });
 
 

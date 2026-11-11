@@ -32,8 +32,6 @@ import type {
 const BASKET_15M = [
   { code: '1HZ100V', name: 'Vol 100 (1s)', market: 'synthetic_index', engine: '15m' as const },
   { code: 'R_75', name: 'Volatility 75', market: 'synthetic_index', engine: '15m' as const },
-  { code: '1HZ50V', name: 'Vol 50 (1s)', market: 'synthetic_index', engine: '15m' as const },
-  { code: 'R_100', name: 'Volatility 100', market: 'synthetic_index', engine: '15m' as const },
 ];
 
 const BASKET_1H = [

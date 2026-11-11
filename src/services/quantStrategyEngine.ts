@@ -330,7 +330,6 @@ export function evaluateQuantSignal(params: {
   const lookback = is5m ? 20 : is15m ? 32 : profile.donchianLookback;
   const atrCutoff = is5m ? 0.018 : is15m ? 0.015 : 0.0065;
   const trendAdxMin = is5m ? 28 : is15m ? 28 : profile.pureTrendOnly ? 20 : 24;
-  const trendTpMult = is5m ? 1.4 : is15m ? 2.0 : 3.2;
   const mrTpMult = is5m ? 1.0 : is15m ? 1.2 : 1.6;
 
   if (bars.length < 110) {
@@ -355,6 +354,8 @@ export function evaluateQuantSignal(params: {
   const closes = bars.map((b) => b.close);
   const ema100 = computeEMA(closes, 100);
   const ema30 = computeEMA(closes, 30);
+  const ema26 = computeEMA(closes, 26);
+  const ema12 = computeEMA(closes, 12);
   const rsi = computeRSI(closes, 14);
   const { atr, adx } = computeADXandATR(bars, 14);
 
@@ -380,7 +381,9 @@ export function evaluateQuantSignal(params: {
     donchianLow48: lo,
   };
 
-  // Check exit condition if there is an open Multiplier contract on this symbol
+  // Check exit condition if there is an open Multiplier contract on this symbol:
+  // - Trend trades (no fixed TP) trail strictly on EMA(30) close crosses, matching the backtest.
+  // - Mean-reversion trades (fixed TP set) exit on RSI recovery crosses (> 58 / < 42).
   let exitSignalForOpenPosition: QuantSignalEvaluation['exitSignalForOpenPosition'] = {
     shouldExit: false,
     contractId: null,
@@ -391,17 +394,33 @@ export function evaluateQuantSignal(params: {
       openForSymbol.contractType === 'MULTUP' ||
       openForSymbol.contractType === 'CALL' ||
       openForSymbol.contractType === 'CALLE';
-    if (isLong && bar.close < ema30[idx] && rsi[idx] > 58) {
+    const isMrPosition = openForSymbol.takeProfitPrice !== null;
+
+    if (isMrPosition) {
+      if (isLong && rsi[idx] > 58) {
+        exitSignalForOpenPosition = {
+          shouldExit: true,
+          contractId: openForSymbol.contractId,
+          reason: 'Mean-reversion RSI(14) reached > 58 recovery target.',
+        };
+      } else if (!isLong && rsi[idx] < 42) {
+        exitSignalForOpenPosition = {
+          shouldExit: true,
+          contractId: openForSymbol.contractId,
+          reason: 'Mean-reversion RSI(14) reached < 42 recovery target.',
+        };
+      }
+    } else if (isLong && bar.close < ema30[idx]) {
       exitSignalForOpenPosition = {
         shouldExit: true,
         contractId: openForSymbol.contractId,
-        reason: 'Closed bar crossed below trailing EMA(30) / RSI target.',
+        reason: 'Closed bar crossed below trailing EMA(30).',
       };
-    } else if (!isLong && bar.close > ema30[idx] && rsi[idx] < 42) {
+    } else if (!isLong && bar.close > ema30[idx]) {
       exitSignalForOpenPosition = {
         shouldExit: true,
         contractId: openForSymbol.contractId,
-        reason: 'Closed bar crossed above trailing EMA(30) / RSI target.',
+        reason: 'Closed bar crossed above trailing EMA(30).',
       };
     }
   }
@@ -468,7 +487,12 @@ export function evaluateQuantSignal(params: {
       };
     }
 
-    if (bar.close > hi && bar.close > ema100[idx] && ema30[idx] > ema100[idx]) {
+    const longTrendAligned =
+      is15m || is5m
+        ? bar.close > hi && ema12[idx] > ema26[idx] && ema26[idx] > ema100[idx]
+        : bar.close > hi && bar.close > ema100[idx] && ema30[idx] > ema100[idx];
+
+    if (longTrendAligned) {
       return {
         symbol,
         isCsprng,
@@ -477,22 +501,26 @@ export function evaluateQuantSignal(params: {
         indicators,
         signalDirection: 'rise',
         signalMode: 'trend',
-        signalHeadline: `MULTUP Trend Breakout (${lookback}b High + EMA30 > EMA100 [${timeframe.toUpperCase()}])`,
+        signalHeadline:
+          is15m || is5m
+            ? `MULTUP Trend Breakout (${lookback}b High + EMA12 > EMA26 > EMA100 [${timeframe.toUpperCase()}])`
+            : `MULTUP Trend Breakout (${lookback}b High + EMA30 > EMA100 [${timeframe.toUpperCase()}])`,
         signalRationale: `Calm compression (ATR ${indicators.atrPct.toFixed(2)}%) + ADX ${adx[idx].toFixed(1)} expansion above ${lookback}-bar high (${hi.toFixed(2)}). Trail exit on EMA(30).`,
         exitSignalForOpenPosition,
         riskPlan: {
           ...baseRiskPlan,
-          recommendedTakeProfit: Number((recommendedStake * trendTpMult).toFixed(2)),
+          recommendedTakeProfit: null,
         },
       };
     }
 
-    if (
+    const shortTrendAligned =
       !profile.longBiasOnly &&
-      bar.close < lo &&
-      bar.close < ema100[idx] &&
-      ema30[idx] < ema100[idx]
-    ) {
+      (is15m || is5m
+        ? bar.close < lo && ema12[idx] < ema26[idx] && ema26[idx] < ema100[idx]
+        : bar.close < lo && bar.close < ema100[idx] && ema30[idx] < ema100[idx]);
+
+    if (shortTrendAligned) {
       return {
         symbol,
         isCsprng,
@@ -501,12 +529,15 @@ export function evaluateQuantSignal(params: {
         indicators,
         signalDirection: 'fall',
         signalMode: 'trend',
-        signalHeadline: `MULTDOWN Trend Breakdown (${lookback}b Low + EMA30 < EMA100 [${timeframe.toUpperCase()}])`,
+        signalHeadline:
+          is15m || is5m
+            ? `MULTDOWN Trend Breakdown (${lookback}b Low + EMA12 < EMA26 < EMA100 [${timeframe.toUpperCase()}])`
+            : `MULTDOWN Trend Breakdown (${lookback}b Low + EMA30 < EMA100 [${timeframe.toUpperCase()}])`,
         signalRationale: `Calm compression (ATR ${indicators.atrPct.toFixed(2)}%) + ADX ${adx[idx].toFixed(1)} breakdown below ${lookback}-bar low (${lo.toFixed(2)}). Trail exit on EMA(30).`,
         exitSignalForOpenPosition,
         riskPlan: {
           ...baseRiskPlan,
-          recommendedTakeProfit: Number((recommendedStake * trendTpMult).toFixed(2)),
+          recommendedTakeProfit: null,
         },
       };
     }
