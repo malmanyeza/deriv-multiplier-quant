@@ -508,6 +508,7 @@ describe('Quant Strategy Engine (Chaos Gate, CSPRNG Block & Quarter-Kelly Risk)'
       timeframe: '15m',
     });
     expect(eval15m.riskPlan.timeframe).toBe('15m');
+    expect(eval15m.riskPlan.recommendedStopLoss).toBeNull();
     expect(eval15m.riskPlan.circuitBreakerTripped).toBe(false);
 
     // 2. Evaluate with 2 consecutive losses -> throttles risk by 50%

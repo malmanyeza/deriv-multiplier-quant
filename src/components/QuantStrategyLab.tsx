@@ -164,7 +164,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     } catch {
       // ignore
     }
-    return 'dual';
+    return '1h';
   });
   const [candles1h, setCandles1h] = useState<CandlePoint[]>([]);
   const [loadingCandles, setLoadingCandles] = useState<boolean>(false);
@@ -359,7 +359,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     };
   }, [socket, connectionStatus, connectionGeneration, symbol, loadMultiPageCandles, granularity]);
 
-  const [riskPct, setRiskPct] = useState<number>(0.01);
+  const [riskPct, setRiskPct] = useState<number>(0.0075);
 
   const syncServerAutoPilot = useCallback(async () => {
     try {

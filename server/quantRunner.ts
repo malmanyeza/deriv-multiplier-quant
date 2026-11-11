@@ -126,8 +126,8 @@ export class QuantServerRunner {
   private currency = 'USD';
 
   private armed = false;
-  private timeframe: QuantTimeframe = 'dual';
-  private riskPct = 0.01;
+  private timeframe: QuantTimeframe = '1h';
+  private riskPct = 0.0075;
   private lastScanAt: string | null = null;
   private lastError: string | null = null;
 

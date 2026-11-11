@@ -317,7 +317,7 @@ export function evaluateQuantSignal(params: {
     stakePctOfBalance,
     recommendedMultiplier: is15m ? 30 : 100,
     recommendedTakeProfit: null,
-    recommendedStopLoss: is15m ? Number((recommendedStake * 0.65).toFixed(2)) : null,
+    recommendedStopLoss: null,
     throttledByDrawdown,
     consecutiveLosses,
     timeframe,
