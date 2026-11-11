@@ -77,6 +77,7 @@ export const App: React.FC = () => {
   const chartSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [licensesOpen, setLicensesOpen] = useState<boolean>(false);
+  const [manualTicketOpen, setManualTicketOpen] = useState<boolean>(false);
 
   const rulesGenerationRef = useRef<number>(0);
 
@@ -256,7 +257,14 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-shell">
-      <HeaderBar onOpenLicenses={() => setLicensesOpen(true)} />
+      <HeaderBar
+        manualTicketOpen={manualTicketOpen}
+        onToggleManualTicket={() => {
+          setHoverPreview(null);
+          setManualTicketOpen((prev) => !prev);
+        }}
+        onOpenLicenses={() => setLicensesOpen(true)}
+      />
 
       {(authNotice || connectionError || marketError) && (
         <div className="global-banners">
@@ -299,7 +307,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      <main className="desk-grid">
+      <main className={`desk-grid${manualTicketOpen ? '' : ' desk-grid-compact'}`}>
         <SymbolSelector
           symbols={symbols}
           selectedSymbol={selectedSymbol}
@@ -312,21 +320,6 @@ export const App: React.FC = () => {
         />
 
         <div className="center-column">
-          <div ref={chartSectionRef}>
-            <PriceChart
-              socket={socket}
-              connectionStatus={connectionStatus}
-              connectionGeneration={connectionGeneration}
-              symbolInfo={selectedSymbolInfo}
-              symbol={selectedSymbol}
-              granularity={granularity}
-              onChangeGranularity={setGranularity}
-              positions={lifecycle.positions}
-              selectedContractId={selectedContractId}
-              hoverPreview={hoverPreview}
-            />
-          </div>
-
           <QuantStrategyLab
             socket={socket}
             connectionStatus={connectionStatus}
@@ -351,6 +344,21 @@ export const App: React.FC = () => {
             onStartLogin={startLogin}
           />
 
+          <div ref={chartSectionRef}>
+            <PriceChart
+              socket={socket}
+              connectionStatus={connectionStatus}
+              connectionGeneration={connectionGeneration}
+              symbolInfo={selectedSymbolInfo}
+              symbol={selectedSymbol}
+              granularity={granularity}
+              onChangeGranularity={setGranularity}
+              positions={lifecycle.positions}
+              selectedContractId={selectedContractId}
+              hoverPreview={hoverPreview}
+            />
+          </div>
+
           <PositionsPanel
             authenticated={authenticated}
             positions={lifecycle.positions}
@@ -369,51 +377,53 @@ export const App: React.FC = () => {
           />
         </div>
 
-        <OrderTicket
-          phase={lifecycle.phase}
-          authenticated={authenticated}
-          oauthConfigured={oauthConfigured}
-          patConfigured={patConfigured}
-          patReady={patReady}
-          currency={quoteCurrency}
-          accountBalance={selectedAccount?.balance ?? 0}
-          contractFamily={contractFamily}
-          onChangeContractFamily={(fam) => {
-            setHoverPreview(null);
-            setContractFamily(fam);
-          }}
-          rules={rules}
-          rulesLoading={rulesLoading}
-          basis={basis}
-          onChangeBasis={setBasis}
-          amount={amount}
-          onChangeAmount={setAmount}
-          multiplier={multiplier}
-          onChangeMultiplier={setMultiplier}
-          takeProfit={takeProfit}
-          onChangeTakeProfit={setTakeProfit}
-          stopLoss={stopLoss}
-          onChangeStopLoss={setStopLoss}
-          durationUnit={durationUnit}
-          onChangeDurationUnit={setDurationUnit}
-          duration={duration}
-          onChangeDuration={setDuration}
-          allowEquals={allowEquals}
-          onChangeAllowEquals={handleToggleAllowEquals}
-          stakeLimits={lifecycle.stakeLimits}
-          validationError={lifecycle.validationError}
-          riseQuote={lifecycle.riseQuote}
-          fallQuote={lifecycle.fallQuote}
-          confirmation={lifecycle.confirmation}
-          buyingInFlight={lifecycle.buyingInFlight}
-          tradeError={lifecycle.tradeError}
-          onClearTradeError={lifecycle.clearTradeError}
-          onRequestConfirmation={lifecycle.requestConfirmation}
-          onCancelConfirmation={lifecycle.cancelConfirmation}
-          onConfirmAndBuy={lifecycle.confirmAndBuy}
-          onStartLogin={startLogin}
-          onHoverPreviewChange={setHoverPreview}
-        />
+        {manualTicketOpen && (
+          <OrderTicket
+            phase={lifecycle.phase}
+            authenticated={authenticated}
+            oauthConfigured={oauthConfigured}
+            patConfigured={patConfigured}
+            patReady={patReady}
+            currency={quoteCurrency}
+            accountBalance={selectedAccount?.balance ?? 0}
+            contractFamily={contractFamily}
+            onChangeContractFamily={(fam) => {
+              setHoverPreview(null);
+              setContractFamily(fam);
+            }}
+            rules={rules}
+            rulesLoading={rulesLoading}
+            basis={basis}
+            onChangeBasis={setBasis}
+            amount={amount}
+            onChangeAmount={setAmount}
+            multiplier={multiplier}
+            onChangeMultiplier={setMultiplier}
+            takeProfit={takeProfit}
+            onChangeTakeProfit={setTakeProfit}
+            stopLoss={stopLoss}
+            onChangeStopLoss={setStopLoss}
+            durationUnit={durationUnit}
+            onChangeDurationUnit={setDurationUnit}
+            duration={duration}
+            onChangeDuration={setDuration}
+            allowEquals={allowEquals}
+            onChangeAllowEquals={handleToggleAllowEquals}
+            stakeLimits={lifecycle.stakeLimits}
+            validationError={lifecycle.validationError}
+            riseQuote={lifecycle.riseQuote}
+            fallQuote={lifecycle.fallQuote}
+            confirmation={lifecycle.confirmation}
+            buyingInFlight={lifecycle.buyingInFlight}
+            tradeError={lifecycle.tradeError}
+            onClearTradeError={lifecycle.clearTradeError}
+            onRequestConfirmation={lifecycle.requestConfirmation}
+            onCancelConfirmation={lifecycle.cancelConfirmation}
+            onConfirmAndBuy={lifecycle.confirmAndBuy}
+            onStartLogin={startLogin}
+            onHoverPreviewChange={setHoverPreview}
+          />
+        )}
       </main>
 
       <LicensesModal open={licensesOpen} onClose={() => setLicensesOpen(false)} />

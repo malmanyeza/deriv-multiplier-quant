@@ -147,9 +147,9 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
 
   const applyQuarterKellyStake = () => {
     if (accountBalance <= 0) return;
-    const raw = accountBalance * 0.0075;
+    const raw = accountBalance * 0.03;
     const min = stakeLimits.min ?? 1;
-    const max = stakeLimits.max ?? accountBalance * 0.02;
+    const max = stakeLimits.max ?? accountBalance * 0.05;
     const clamped = Number(Math.min(max, Math.max(min, raw)).toFixed(2));
     onChangeAmount(clamped);
   };
@@ -519,13 +519,13 @@ export const OrderTicket: React.FC<OrderTicketProps> = ({
               </button>
             ))}
             {accountBalance > 0 && (
-              <button
+                <button
                 type="button"
                 className="chip-btn chip-kelly"
-                title="Set Stake to 0.75% Quarter-Kelly of Account Balance"
+                title="Set Stake to 3.0% (1R) of Account Balance"
                 onClick={applyQuarterKellyStake}
               >
-                <Zap size={11} aria-hidden="true" /> 1R (0.75%)
+                <Zap size={11} aria-hidden="true" /> 1R (3.0%)
               </button>
             )}
           </div>

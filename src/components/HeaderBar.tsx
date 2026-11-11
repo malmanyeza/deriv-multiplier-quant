@@ -6,6 +6,7 @@ import {
   RefreshCw,
   RotateCcw,
   Scale,
+  SlidersHorizontal,
   UserPlus,
   Wifi,
   WifiOff,
@@ -13,10 +14,16 @@ import {
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderBarProps {
+  manualTicketOpen: boolean;
+  onToggleManualTicket: () => void;
   onOpenLicenses: () => void;
 }
 
-export const HeaderBar: React.FC<HeaderBarProps> = ({ onOpenLicenses }) => {
+export const HeaderBar: React.FC<HeaderBarProps> = ({
+  manualTicketOpen,
+  onToggleManualTicket,
+  onOpenLicenses,
+}) => {
   const {
     oauthConfigured,
     patConfigured,
@@ -120,8 +127,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ onOpenLicenses }) => {
           <Activity size={20} />
         </div>
         <div>
-          <h1 className="brand-title">Synthetic Pulse</h1>
-          <p className="brand-subtitle">Synthetic Indices &bull; Rise / Fall Desk</p>
+          <h1 className="brand-title">Deriv Quant Desk</h1>
+          <p className="brand-subtitle">Multipliers Auto-Pilot &bull; 1H &amp; 15M</p>
         </div>
       </div>
 
@@ -222,6 +229,17 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({ onOpenLicenses }) => {
             )}
           </div>
         )}
+
+        <button
+          type="button"
+          className={`btn btn-sm ${manualTicketOpen ? 'btn-primary' : 'btn-outline'}`}
+          aria-pressed={manualTicketOpen}
+          onClick={onToggleManualTicket}
+          title="Toggle Manual Order Ticket panel"
+        >
+          <SlidersHorizontal size={14} aria-hidden="true" />
+          <span>Manual Trade</span>
+        </button>
 
         <button
           type="button"

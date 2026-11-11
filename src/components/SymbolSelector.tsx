@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Sparkles } from 'lucide-react';
+import { Globe, Search, Sparkles } from 'lucide-react';
 import type { ActiveSymbolItem } from '../types/deriv';
 import {
   formatMarketLabel,
   formatSubmarketLabel,
-  isCsprngSyntheticSymbol,
   isQuantCoreSymbol,
 } from '../services/marketData';
 
@@ -15,7 +14,29 @@ interface SymbolSelectorProps {
   onSelectSymbol: (symbol: string) => void;
 }
 
-type MarketFilterTab = 'quant_core' | 'all' | 'cryptocurrency' | 'macro' | 'synthetic_index' | 'forex';
+type WatchlistScope = 'basket' | 'all';
+type MarketFilterTab =
+  | 'all'
+  | 'cryptocurrency'
+  | 'macro'
+  | 'synthetic_index'
+  | 'forex';
+
+interface BotMarketMeta {
+  code: string;
+  fallbackName: string;
+  engine: '1H Macro' | '15M Turbo';
+  multLabel: string;
+}
+
+const ACTIVE_BOT_MARKETS: BotMarketMeta[] = [
+  { code: 'cryBTCUSD', fallbackName: 'BTC/USD', engine: '1H Macro', multLabel: '100x' },
+  { code: 'cryETHUSD', fallbackName: 'ETH/USD', engine: '1H Macro', multLabel: '100x' },
+  { code: 'frxXAUUSD', fallbackName: 'Gold/USD', engine: '1H Macro', multLabel: '100x' },
+  { code: 'OTC_NDX', fallbackName: 'US Tech 100', engine: '1H Macro', multLabel: '100x' },
+  { code: '1HZ100V', fallbackName: 'Volatility 100 (1s)', engine: '15M Turbo', multLabel: '40x' },
+  { code: 'R_75', fallbackName: 'Volatility 75', engine: '15M Turbo', multLabel: '50x' },
+];
 
 export const SymbolSelector: React.FC<SymbolSelectorProps> = ({
   symbols,
@@ -23,15 +44,30 @@ export const SymbolSelector: React.FC<SymbolSelectorProps> = ({
   loading,
   onSelectSymbol,
 }) => {
+  const [scope, setScope] = useState<WatchlistScope>('basket');
   const [query, setQuery] = useState('');
   const [marketFilter, setMarketFilter] = useState<MarketFilterTab>('all');
 
-  const filteredGroups = useMemo(() => {
+  const symbolByCode = useMemo(() => {
+    const map = new Map<string, ActiveSymbolItem>();
+    for (const s of symbols) {
+      map.set(s.underlying_symbol, s);
+    }
+    return map;
+  }, [symbols]);
+
+  const botGroups = useMemo(() => {
+    const macro = ACTIVE_BOT_MARKETS.filter((m) => m.engine === '1H Macro');
+    const turbo = ACTIVE_BOT_MARKETS.filter((m) => m.engine === '15M Turbo');
+    return [
+      { label: '1H Macro (100x)', items: macro },
+      { label: '15M Turbo (40x–50x)', items: turbo },
+    ];
+  }, []);
+
+  const filteredAllGroups = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const matching = symbols.filter((item) => {
-      if (marketFilter === 'quant_core' && !isQuantCoreSymbol(item.underlying_symbol)) {
-        return false;
-      }
       if (marketFilter === 'cryptocurrency' && item.market !== 'cryptocurrency') {
         return false;
       }
@@ -60,8 +96,8 @@ export const SymbolSelector: React.FC<SymbolSelectorProps> = ({
 
     const map = new Map<string, ActiveSymbolItem[]>();
     for (const item of matching) {
-      const groupKey = isQuantCoreSymbol(item.underlying_symbol) && marketFilter !== 'synthetic_index'
-        ? '__quant_core__'
+      const groupKey = isQuantCoreSymbol(item.underlying_symbol)
+        ? '__bot_core__'
         : item.submarket;
       const list = map.get(groupKey) ?? [];
       list.push(item);
@@ -69,8 +105,8 @@ export const SymbolSelector: React.FC<SymbolSelectorProps> = ({
     }
 
     return Array.from(map.entries()).sort((a, b) => {
-      if (a[0] === '__quant_core__') return -1;
-      if (b[0] === '__quant_core__') return 1;
+      if (a[0] === '__bot_core__') return -1;
+      if (b[0] === '__bot_core__') return 1;
       return formatSubmarketLabel(a[0]).localeCompare(formatSubmarketLabel(b[0]));
     });
   }, [symbols, query, marketFilter]);
@@ -80,56 +116,137 @@ export const SymbolSelector: React.FC<SymbolSelectorProps> = ({
       <div className="panel-header">
         <div className="panel-title-row">
           <Sparkles size={15} className="accent-icon" aria-hidden="true" />
-          <h2 className="panel-title">Markets &amp; Alpha Basket</h2>
+          <h2 className="panel-title">
+            {scope === 'basket' ? 'Bot Markets' : 'All Markets'}
+          </h2>
         </div>
-        <span className="count-chip">{symbols.length}</span>
+        <span className="count-chip">
+          {scope === 'basket' ? ACTIVE_BOT_MARKETS.length : symbols.length}
+        </span>
       </div>
 
-      <div className="symbol-search-box">
-        <Search size={14} className="search-icon" aria-hidden="true" />
-        <input
-          type="search"
-          className="search-input"
-          placeholder="Search BTC, Gold, Nasdaq, R_100…"
-          aria-label="Search Markets"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
-
-      <div className="submarket-pills" role="tablist" aria-label="Filter by market class">
-        {[
-          { id: 'all', label: 'All' },
-          { id: 'quant_core', label: '★ Quant Core' },
-          { id: 'cryptocurrency', label: '24/7 Crypto' },
-          { id: 'macro', label: 'Gold & Indices' },
-          { id: 'forex', label: 'Forex' },
-          { id: 'synthetic_index', label: 'Synthetics' },
-        ].map((tab) => (
+      <div className="watchlist-scope-wrap">
+        <div className="segmented-control" role="tablist" aria-label="Watchlist scope">
           <button
-            key={tab.id}
             type="button"
             role="tab"
-            aria-selected={marketFilter === tab.id}
-            className={`chip-btn ${marketFilter === tab.id ? 'active' : ''}`}
-            onClick={() => setMarketFilter(tab.id as MarketFilterTab)}
+            aria-selected={scope === 'basket'}
+            className={`seg-btn ${scope === 'basket' ? 'active' : ''}`}
+            onClick={() => setScope('basket')}
           >
-            {tab.label}
+            <Sparkles size={12} aria-hidden="true" />
+            <span>Active (6)</span>
           </button>
-        ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scope === 'all'}
+            className={`seg-btn ${scope === 'all' ? 'active' : ''}`}
+            onClick={() => setScope('all')}
+          >
+            <Globe size={12} aria-hidden="true" />
+            <span>All Markets</span>
+          </button>
+        </div>
       </div>
 
+      {scope === 'all' && (
+        <>
+          <div className="symbol-search-box">
+            <Search size={14} className="search-icon" aria-hidden="true" />
+            <input
+              type="search"
+              className="search-input"
+              placeholder="Search BTC, Gold, Nasdaq, R_75…"
+              aria-label="Search Markets"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+
+          <div className="submarket-pills" role="tablist" aria-label="Filter by market class">
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'cryptocurrency', label: 'Crypto' },
+              { id: 'macro', label: 'Gold & Indices' },
+              { id: 'forex', label: 'Forex' },
+              { id: 'synthetic_index', label: 'Synthetics' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={marketFilter === tab.id}
+                className={`chip-btn ${marketFilter === tab.id ? 'active' : ''}`}
+                onClick={() => setMarketFilter(tab.id as MarketFilterTab)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
       <div className="symbol-list" role="listbox" aria-label="Available Markets">
-        {loading && symbols.length === 0 ? (
+        {scope === 'basket' ? (
+          botGroups.map((group) => (
+            <div key={group.label} className="symbol-group">
+              <div className="symbol-group-label">{group.label}</div>
+              {group.items.map((meta) => {
+                const live = symbolByCode.get(meta.code);
+                const isSelected = meta.code === selectedSymbol;
+                const isOpen = live
+                  ? live.exchange_is_open === 1 && live.is_trading_suspended === 0
+                  : true;
+                const is24x7 =
+                  meta.code.startsWith('cry') ||
+                  meta.code.startsWith('1HZ') ||
+                  meta.code.startsWith('R_');
+
+                return (
+                  <button
+                    key={meta.code}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    className={`symbol-row ${isSelected ? 'selected' : ''}`}
+                    onClick={() => onSelectSymbol(meta.code)}
+                  >
+                    <div className="symbol-row-main">
+                      <span className="symbol-name">
+                        {live?.underlying_symbol_name ?? meta.fallbackName}
+                      </span>
+                      <span className="symbol-code">
+                        {meta.code} &middot; {meta.multLabel}
+                      </span>
+                    </div>
+                    <span
+                      className={`market-dot ${isOpen ? 'open' : 'closed'}`}
+                      title={
+                        isOpen
+                          ? is24x7
+                            ? '24/7 Open'
+                            : 'Market Open'
+                          : 'Closed for Weekend / Session'
+                      }
+                    >
+                      {isOpen ? (is24x7 ? '24/7' : 'OPEN') : 'CLOSED'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))
+        ) : loading && symbols.length === 0 ? (
           <div className="empty-state">Loading Deriv Markets…</div>
-        ) : filteredGroups.length === 0 ? (
+        ) : filteredAllGroups.length === 0 ? (
           <div className="empty-state">No markets match &ldquo;{query}&rdquo;.</div>
         ) : (
-          filteredGroups.map(([groupKey, items]) => (
+          filteredAllGroups.map(([groupKey, items]) => (
             <div key={groupKey} className="symbol-group">
               <div className="symbol-group-label">
-                {groupKey === '__quant_core__'
-                  ? '★ Audited Quant Core Basket'
+                {groupKey === '__bot_core__'
+                  ? 'Bot Core Markets'
                   : formatSubmarketLabel(groupKey)}
               </div>
               {items.map((item) => {
@@ -138,11 +255,6 @@ export const SymbolSelector: React.FC<SymbolSelectorProps> = ({
                   item.exchange_is_open === 1 && item.is_trading_suspended === 0;
                 const is24x7 =
                   item.market === 'cryptocurrency' || item.market === 'synthetic_index';
-                const isCore = isQuantCoreSymbol(item.underlying_symbol);
-                const isCsprng = isCsprngSyntheticSymbol(
-                  item.underlying_symbol,
-                  item.market,
-                );
 
                 return (
                   <button
@@ -157,18 +269,14 @@ export const SymbolSelector: React.FC<SymbolSelectorProps> = ({
                       <span className="symbol-name">
                         {item.underlying_symbol_name}
                       </span>
-                      <span className="symbol-code">
-                        {item.underlying_symbol}
-                        {isCore && ' · ★ ALPHA'}
-                        {isCsprng && ' · CSPRNG'}
-                      </span>
+                      <span className="symbol-code">{item.underlying_symbol}</span>
                     </div>
                     <span
                       className={`market-dot ${isOpen ? 'open' : 'closed'}`}
                       title={
                         isOpen
                           ? is24x7
-                            ? '24/7 Open (Including Weekends)'
+                            ? '24/7 Open'
                             : 'Market Open'
                           : 'Closed for Weekend / Session'
                       }
