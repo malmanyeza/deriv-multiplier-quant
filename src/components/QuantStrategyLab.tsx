@@ -355,7 +355,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     };
   }, [socket, connectionStatus, connectionGeneration, symbol, loadMultiPageCandles, granularity]);
 
-  const [riskPct, setRiskPct] = useState<number>(0.0075);
+  const [riskPct, setRiskPct] = useState<number>(0.02);
 
   const syncServerAutoPilot = useCallback(async () => {
     try {
