@@ -125,7 +125,7 @@ export class QuantServerRunner {
 
   private armed = false;
   private timeframe: QuantTimeframe = '1h';
-  private riskPct = 0.02;
+  private riskPct = 0.03;
   private lastScanAt: string | null = null;
   private lastError: string | null = null;
 

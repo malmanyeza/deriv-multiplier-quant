@@ -355,7 +355,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     };
   }, [socket, connectionStatus, connectionGeneration, symbol, loadMultiPageCandles, granularity]);
 
-  const [riskPct, setRiskPct] = useState<number>(0.02);
+  const [riskPct, setRiskPct] = useState<number>(0.03);
 
   const syncServerAutoPilot = useCallback(async () => {
     try {
@@ -1157,6 +1157,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
                 { val: 0.0075, label: '0.75%' },
                 { val: 0.01, label: '1.0%' },
                 { val: 0.02, label: '2.0%' },
+                { val: 0.03, label: '3.0%' },
               ].map((opt) => (
                 <button
                   key={opt.label}

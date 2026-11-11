@@ -537,16 +537,16 @@ async function main() {
     }
 
     const total = summarizeTrades(allTrades, days);
-    const port1000 = simulatePortfolio(allTrades, 1000, 0.02);
-    const port100 = simulatePortfolio(allTrades, 100, 0.02);
+    const port1000 = simulatePortfolio(allTrades, 1000, 0.03);
+    const port100 = simulatePortfolio(allTrades, 100, 0.03);
     console.log(
       `\nCOMBINED ${title}: N=${total.n} (${total.tradesPerMo}/mo) | WR=${total.winRate}% | Net=${total.netR >= 0 ? '+' : ''}${total.netR}R | Avg=${total.avgR >= 0 ? '+' : ''}${total.avgR}R/trade | PF=${total.pf} | MaxDD=${total.maxDdR}R | MaxLossStrk=${total.maxStreak}`,
     );
     console.log(
-      `Portfolio ($1,000 @ 2.0% Stake, max 3 open, 2-loss throttle): $${port1000.initialEquity} -> $${port1000.finalEquity} (${port1000.retPct >= 0 ? '+' : ''}${port1000.retPct}%) | MaxDD=${port1000.maxDdPct}% | Trades=${port1000.taken}`,
+      `Portfolio ($1,000 @ 3.0% Stake, max 3 open, 2-loss throttle): $${port1000.initialEquity} -> $${port1000.finalEquity} (${port1000.retPct >= 0 ? '+' : ''}${port1000.retPct}%) | MaxDD=${port1000.maxDdPct}% | Trades=${port1000.taken}`,
     );
     console.log(
-      `Portfolio ($100 @ 2.0% Stake / $1.00 min floor, max 3 open, 2-loss throttle): $${port100.initialEquity} -> $${port100.finalEquity} (${port100.retPct >= 0 ? '+' : ''}${port100.retPct}%) | MaxDD=${port100.maxDdPct}% | Trades=${port100.taken}`,
+      `Portfolio ($100 @ 3.0% Stake / $1.00 min floor, max 3 open, 2-loss throttle): $${port100.initialEquity} -> $${port100.finalEquity} (${port100.retPct >= 0 ? '+' : ''}${port100.retPct}%) | MaxDD=${port100.maxDdPct}% | Trades=${port100.taken}`,
     );
     return allTrades;
   };
@@ -555,17 +555,17 @@ async function main() {
   const t15m = await runBasket('15M TURBO SYNTHETIC BASKET (BASKET_15M on 15m candles)', BASKET_15M, '15m', 900, 30);
   const dualTrades = [...t1h, ...t15m];
   const dualSummary = summarizeTrades(dualTrades, days);
-  const dual1000 = simulatePortfolio(dualTrades, 1000, 0.02);
-  const dual100 = simulatePortfolio(dualTrades, 100, 0.02);
-  console.log(`\n--- COMBINED DUAL-ENGINE (1H + 15M @ 2.0% Stake) ---`);
+  const dual1000 = simulatePortfolio(dualTrades, 1000, 0.03);
+  const dual100 = simulatePortfolio(dualTrades, 100, 0.03);
+  console.log(`\n--- COMBINED DUAL-ENGINE (1H + 15M @ 3.0% Stake) ---`);
   console.log(
     `COMBINED DUAL: N=${dualSummary.n} | WR=${dualSummary.winRate}% | Net=${dualSummary.netR >= 0 ? '+' : ''}${dualSummary.netR}R | PF=${dualSummary.pf} | MaxDD=${dualSummary.maxDdR}R`,
   );
   console.log(
-    `Dual Portfolio ($1,000 @ 2.0% Stake): $${dual1000.initialEquity} -> $${dual1000.finalEquity} (${dual1000.retPct >= 0 ? '+' : ''}${dual1000.retPct}%) | MaxDD=${dual1000.maxDdPct}% | Trades=${dual1000.taken}`,
+    `Dual Portfolio ($1,000 @ 3.0% Stake): $${dual1000.initialEquity} -> $${dual1000.finalEquity} (${dual1000.retPct >= 0 ? '+' : ''}${dual1000.retPct}%) | MaxDD=${dual1000.maxDdPct}% | Trades=${dual1000.taken}`,
   );
   console.log(
-    `Dual Portfolio ($100 @ 2.0% Stake / $1.00 min floor): $${dual100.initialEquity} -> $${dual100.finalEquity} (${dual100.retPct >= 0 ? '+' : ''}${dual100.retPct}%) | MaxDD=${dual100.maxDdPct}% | Trades=${dual100.taken}`,
+    `Dual Portfolio ($100 @ 3.0% Stake / $1.00 min floor): $${dual100.initialEquity} -> $${dual100.finalEquity} (${dual100.retPct >= 0 ? '+' : ''}${dual100.retPct}%) | MaxDD=${dual100.maxDdPct}% | Trades=${dual100.taken}`,
   );
   await runBasket('15M NON-SYNTHETIC COMPARISON (BASKET_1H on 15m candles)', BASKET_1H, '15m', 900, 30);
 
