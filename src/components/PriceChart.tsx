@@ -168,28 +168,28 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       height: Math.max(360, Math.floor(initialRect.height) || 420),
       layout: {
         attributionLogo: true,
-        background: { type: ColorType.Solid, color: '#0b1220' },
-        textColor: '#94a3b8',
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#9aa0a6',
         fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       },
       grid: {
-        vertLines: { color: 'rgba(148, 163, 184, 0.07)' },
-        horzLines: { color: 'rgba(148, 163, 184, 0.07)' },
+        vertLines: { color: 'rgba(255, 255, 255, 0.045)' },
+        horzLines: { color: 'rgba(255, 255, 255, 0.045)' },
       },
       rightPriceScale: {
-        borderColor: 'rgba(148, 163, 184, 0.16)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
         scaleMargins: { top: 0.14, bottom: 0.14 },
       },
       timeScale: {
-        borderColor: 'rgba(148, 163, 184, 0.16)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
         timeVisible: true,
         secondsVisible: true,
         rightOffset: 8,
         minBarSpacing: 0.35,
       },
       crosshair: {
-        vertLine: { color: 'rgba(56, 189, 248, 0.35)' },
-        horzLine: { color: 'rgba(56, 189, 248, 0.35)' },
+        vertLine: { color: 'rgba(138, 180, 248, 0.4)' },
+        horzLine: { color: 'rgba(138, 180, 248, 0.4)' },
       },
     });
 
@@ -273,9 +273,9 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     const mainSeries =
       granularity === 0
         ? chart.addSeries(AreaSeries, {
-            lineColor: '#38bdf8',
-            topColor: 'rgba(56, 189, 248, 0.28)',
-            bottomColor: 'rgba(56, 189, 248, 0.01)',
+            lineColor: '#8ab4f8',
+            topColor: 'rgba(138, 180, 248, 0.25)',
+            bottomColor: 'rgba(138, 180, 248, 0.01)',
             lineWidth: 2,
             priceFormat,
           })
