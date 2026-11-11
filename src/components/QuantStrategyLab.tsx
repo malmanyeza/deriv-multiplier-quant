@@ -129,7 +129,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     } catch {
       // ignore
     }
-    return '1h';
+    return 'dual';
   });
   const [candles, setCandles] = useState<CandlePoint[]>([]);
   const [autoPilotArmed, setAutoPilotArmed] = useState<boolean>(() => {
@@ -276,10 +276,18 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         } catch {
           // ignore
         }
+        const savedTf = (() => {
+          try {
+            return localStorage.getItem('deriv_quant_timeframe');
+          } catch {
+            return null;
+          }
+        })();
         if (
-          data.timeframe === 'dual' ||
-          data.timeframe === '15m' ||
-          data.timeframe === '1h'
+          (data.armed || !savedTf) &&
+          (data.timeframe === 'dual' ||
+            data.timeframe === '15m' ||
+            data.timeframe === '1h')
         ) {
           setSelectedTimeframe(data.timeframe);
         }
@@ -614,8 +622,8 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
     } catch {
       // ignore
     }
-    if (serverStatus?.available && autoPilotArmed) {
-      void pushServerAutoPilot({ armed: true, timeframe: tf, riskPct });
+    if (serverStatus?.available) {
+      void pushServerAutoPilot({ armed: autoPilotArmed, timeframe: tf, riskPct });
     }
   };
 

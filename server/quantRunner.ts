@@ -124,7 +124,7 @@ export class QuantServerRunner {
   private currency = 'USD';
 
   private armed = false;
-  private timeframe: QuantTimeframe = '1h';
+  private timeframe: QuantTimeframe = 'dual';
   private riskPct = 0.03;
   private lastScanAt: string | null = null;
   private lastError: string | null = null;
@@ -303,6 +303,7 @@ export class QuantServerRunner {
       this.riskPct = params.riskPct;
     }
 
+    const wasArmed = this.armed;
     this.armed = params.armed;
 
     await saveBotConfig({
@@ -320,7 +321,9 @@ export class QuantServerRunner {
       await this.startLoop();
       void this.runCycle(true);
     } else {
-      this.pushLog('info', '24/7 Server Auto-Pilot DISARMED by user.');
+      if (wasArmed) {
+        this.pushLog('info', '24/7 Server Auto-Pilot DISARMED by user.');
+      }
       this.stopLoop();
     }
 
