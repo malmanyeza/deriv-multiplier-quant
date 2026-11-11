@@ -71,6 +71,10 @@ export const App: React.FC = () => {
   const [hoverPreview, setHoverPreview] = useState<HoverPreviewLevels | null>(
     null,
   );
+  const [selectedContractId, setSelectedContractId] = useState<number | null>(
+    null,
+  );
+  const chartSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [licensesOpen, setLicensesOpen] = useState<boolean>(false);
 
@@ -302,22 +306,26 @@ export const App: React.FC = () => {
           loading={symbolsLoading}
           onSelectSymbol={(sym) => {
             setHoverPreview(null);
+            setSelectedContractId(null);
             setSelectedSymbol(sym);
           }}
         />
 
         <div className="center-column">
-          <PriceChart
-            socket={socket}
-            connectionStatus={connectionStatus}
-            connectionGeneration={connectionGeneration}
-            symbolInfo={selectedSymbolInfo}
-            symbol={selectedSymbol}
-            granularity={granularity}
-            onChangeGranularity={setGranularity}
-            positions={lifecycle.positions}
-            hoverPreview={hoverPreview}
-          />
+          <div ref={chartSectionRef}>
+            <PriceChart
+              socket={socket}
+              connectionStatus={connectionStatus}
+              connectionGeneration={connectionGeneration}
+              symbolInfo={selectedSymbolInfo}
+              symbol={selectedSymbol}
+              granularity={granularity}
+              onChangeGranularity={setGranularity}
+              positions={lifecycle.positions}
+              selectedContractId={selectedContractId}
+              hoverPreview={hoverPreview}
+            />
+          </div>
 
           <QuantStrategyLab
             socket={socket}
@@ -334,6 +342,7 @@ export const App: React.FC = () => {
             stakeLimits={lifecycle.stakeLimits}
             onSelectSymbol={(sym) => {
               setHoverPreview(null);
+              setSelectedContractId(null);
               setSelectedSymbol(sym);
             }}
             onApplyQuantTicketSetup={handleApplyQuantTicketSetup}
@@ -346,10 +355,16 @@ export const App: React.FC = () => {
             authenticated={authenticated}
             positions={lifecycle.positions}
             sellingContractIds={lifecycle.sellingContractIds}
+            selectedContractId={selectedContractId}
             onSellAtMarket={lifecycle.sellAtMarket}
-            onSelectSymbol={(sym) => {
+            onSelectTrade={(pos) => {
               setHoverPreview(null);
-              setSelectedSymbol(sym);
+              setSelectedSymbol(pos.underlyingSymbol);
+              setSelectedContractId(pos.contractId);
+              chartSectionRef.current?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              });
             }}
           />
         </div>

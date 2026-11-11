@@ -134,6 +134,76 @@ describe('Chart feed & overlay derivation', () => {
     expect(switchedOverlays.markers).toEqual([]);
     expect(switchedOverlays.whitespaceFuturePoints).toEqual([]);
   });
+
+  it('derives SL, TP, KO, and Entry price lines and focuses clicked selectedContractId', () => {
+    const multA = normalizeOpenContract({
+      contract_id: 201,
+      underlying_symbol: 'R_100',
+      contract_type: 'MULTUP',
+      multiplier: 40,
+      currency: 'USD',
+      buy_price: '10.00',
+      bid_price: '10.80',
+      profit: '0.80',
+      profit_percentage: 8,
+      purchase_time: 1700000000,
+      date_start: 1700000000,
+      entry_spot: '500.00',
+      entry_spot_time: 1700000000,
+      current_spot: '501.00',
+      is_sold: 0,
+      is_valid_to_sell: 1,
+      limit_order: {
+        take_profit: { value: '510.00' },
+        stop_loss: { value: '495.00' },
+        stop_out: { value: '487.50' },
+      },
+    })!;
+
+    const multB = normalizeOpenContract({
+      contract_id: 202,
+      underlying_symbol: 'R_100',
+      contract_type: 'MULTDOWN',
+      multiplier: 40,
+      currency: 'USD',
+      buy_price: '10.00',
+      bid_price: '9.50',
+      profit: '-0.50',
+      profit_percentage: -5,
+      purchase_time: 1700000100,
+      date_start: 1700000100,
+      entry_spot: '505.00',
+      entry_spot_time: 1700000100,
+      current_spot: '506.00',
+      is_sold: 0,
+      is_valid_to_sell: 1,
+      limit_order: {
+        take_profit: { value: '490.00' },
+        stop_loss: { value: '512.00' },
+        stop_out: { value: '517.50' },
+      },
+    })!;
+
+    const defaultOverlays = deriveRiseFallChartOverlays([multA, multB], 'R_100', 60, 1700000120);
+    expect(defaultOverlays.focusPosition?.contractId).toBe(201);
+    expect(defaultOverlays.entryPriceLine?.price).toBe(500);
+    expect(defaultOverlays.takeProfitPriceLine?.price).toBe(510);
+    expect(defaultOverlays.stopLossPriceLine?.price).toBe(495);
+    expect(defaultOverlays.stopOutPriceLine?.price).toBe(487.5);
+
+    const clickedOverlays = deriveRiseFallChartOverlays(
+      [multA, multB],
+      'R_100',
+      60,
+      1700000120,
+      202,
+    );
+    expect(clickedOverlays.focusPosition?.contractId).toBe(202);
+    expect(clickedOverlays.entryPriceLine?.price).toBe(505);
+    expect(clickedOverlays.takeProfitPriceLine?.price).toBe(490);
+    expect(clickedOverlays.stopLossPriceLine?.price).toBe(512);
+    expect(clickedOverlays.stopOutPriceLine?.price).toBe(517.5);
+  });
 });
 
 describe('DerivSocketOwner OTP minting, subscription forget & late message drop', () => {

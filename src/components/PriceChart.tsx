@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AreaSeries,
   CandlestickSeries,
@@ -31,10 +31,36 @@ import {
   normalizeLiveOhlc,
   normalizeLiveTick,
   normalizeTickHistory,
+  pickChartFocusPosition,
   type CandlePoint,
   type TickPoint,
 } from '../services/chartFeed';
 import { decimalsToMinMove, fluctuationToDecimals } from '../services/marketData';
+
+function createBoundedAutoscaleProvider(targetMin: number, targetMax: number) {
+  return (original: () => AutoscaleInfo | null): AutoscaleInfo | null => {
+    const res = original();
+    if (!res || !res.priceRange) {
+      const pad = Math.max(0.0001, (targetMax - targetMin) * 0.12);
+      return {
+        priceRange: {
+          minValue: targetMin - pad,
+          maxValue: targetMax + pad,
+        },
+      };
+    }
+    const minVal = Math.min(res.priceRange.minValue, targetMin);
+    const maxVal = Math.max(res.priceRange.maxValue, targetMax);
+    const pad = Math.max(0.0001, (maxVal - minVal) * 0.08);
+    return {
+      ...res,
+      priceRange: {
+        minValue: minVal - pad,
+        maxValue: maxVal + pad,
+      },
+    };
+  };
+}
 
 const GRANULARITY_OPTIONS: Array<{ value: ChartGranularity; label: string }> = [
   { value: 0, label: 'Ticks' },
@@ -59,6 +85,7 @@ interface PriceChartProps {
   granularity: ChartGranularity;
   onChangeGranularity: (g: ChartGranularity) => void;
   positions: NormalizedPosition[];
+  selectedContractId?: number | null;
   hoverPreview?: HoverPreviewLevels | null;
 }
 
@@ -71,6 +98,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   granularity,
   onChangeGranularity,
   positions,
+  selectedContractId = null,
   hoverPreview = null,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -81,11 +109,14 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   const futureWhitespaceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const entryPriceLineRef = useRef<IPriceLine | null>(null);
+  const stopLossPriceLineRef = useRef<IPriceLine | null>(null);
   const stopOutPriceLineRef = useRef<IPriceLine | null>(null);
   const takeProfitPriceLineRef = useRef<IPriceLine | null>(null);
   const hoverEntryLineRef = useRef<IPriceLine | null>(null);
   const hoverTpLineRef = useRef<IPriceLine | null>(null);
   const hoverLossLineRef = useRef<IPriceLine | null>(null);
+  const positionAutoscaleRangeRef = useRef<{ min: number; max: number } | null>(null);
+  const hoverPreviewActiveRef = useRef<boolean>(false);
   const lastSeriesTimeRef = useRef<number | null>(null);
   const earliestSeriesTimeRef = useRef<number | null>(null);
   const ticksMapRef = useRef<Map<number, TickPoint>>(new Map());
@@ -176,6 +207,9 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       resizeObserver.disconnect();
       markersPluginRef.current = null;
       entryPriceLineRef.current = null;
+      stopLossPriceLineRef.current = null;
+      stopOutPriceLineRef.current = null;
+      takeProfitPriceLineRef.current = null;
       mainSeriesRef.current = null;
       futureWhitespaceSeriesRef.current = null;
       chartRef.current = null;
@@ -203,6 +237,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       markersPluginRef.current = null;
     }
     entryPriceLineRef.current = null;
+    stopLossPriceLineRef.current = null;
     stopOutPriceLineRef.current = null;
     takeProfitPriceLineRef.current = null;
     hoverEntryLineRef.current = null;
@@ -566,6 +601,11 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     };
   }, [socket, connectionStatus, connectionGeneration, symbol, granularity]);
 
+  const focusedPosition = useMemo(
+    () => pickChartFocusPosition(positions, symbol, selectedContractId),
+    [positions, symbol, selectedContractId],
+  );
+
   // Reconcile Rise/Fall & Multiplier open-position overlays
   useEffect(() => {
     const mainSeries = mainSeriesRef.current;
@@ -578,11 +618,16 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       symbol,
       granularity,
       lastSeriesTimeRef.current,
+      selectedContractId,
     );
 
     if (entryPriceLineRef.current) {
       mainSeries.removePriceLine(entryPriceLineRef.current);
       entryPriceLineRef.current = null;
+    }
+    if (stopLossPriceLineRef.current) {
+      mainSeries.removePriceLine(stopLossPriceLineRef.current);
+      stopLossPriceLineRef.current = null;
     }
     if (stopOutPriceLineRef.current) {
       mainSeries.removePriceLine(stopOutPriceLineRef.current);
@@ -604,6 +649,28 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       });
     }
 
+    if (overlays.takeProfitPriceLine) {
+      takeProfitPriceLineRef.current = mainSeries.createPriceLine({
+        price: overlays.takeProfitPriceLine.price,
+        color: overlays.takeProfitPriceLine.color,
+        lineWidth: 2,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: overlays.takeProfitPriceLine.title,
+      });
+    }
+
+    if (overlays.stopLossPriceLine) {
+      stopLossPriceLineRef.current = mainSeries.createPriceLine({
+        price: overlays.stopLossPriceLine.price,
+        color: overlays.stopLossPriceLine.color,
+        lineWidth: 2,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: overlays.stopLossPriceLine.title,
+      });
+    }
+
     if (overlays.stopOutPriceLine) {
       stopOutPriceLineRef.current = mainSeries.createPriceLine({
         price: overlays.stopOutPriceLine.price,
@@ -615,20 +682,37 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       });
     }
 
-    if (overlays.takeProfitPriceLine) {
-      takeProfitPriceLineRef.current = mainSeries.createPriceLine({
-        price: overlays.takeProfitPriceLine.price,
-        color: overlays.takeProfitPriceLine.color,
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: overlays.takeProfitPriceLine.title,
+    // Auto-scale Y-axis so active TP / SL (or KO when no SL) are visible when viewing the trade
+    const scaleTargets: number[] = [];
+    if (overlays.entryPriceLine) scaleTargets.push(overlays.entryPriceLine.price);
+    if (overlays.takeProfitPriceLine) scaleTargets.push(overlays.takeProfitPriceLine.price);
+    if (overlays.stopLossPriceLine) {
+      scaleTargets.push(overlays.stopLossPriceLine.price);
+    } else if (overlays.stopOutPriceLine) {
+      scaleTargets.push(overlays.stopOutPriceLine.price);
+    }
+    positionAutoscaleRangeRef.current =
+      scaleTargets.length >= 2
+        ? {
+            min: Math.min(...scaleTargets),
+            max: Math.max(...scaleTargets),
+          }
+        : null;
+
+    if (!hoverPreviewActiveRef.current) {
+      mainSeries.applyOptions({
+        autoscaleInfoProvider: positionAutoscaleRangeRef.current
+          ? createBoundedAutoscaleProvider(
+              positionAutoscaleRangeRef.current.min,
+              positionAutoscaleRangeRef.current.max,
+            )
+          : undefined,
       });
     }
 
     markersPlugin.setMarkers(overlays.markers);
     futureSeries.setData(overlays.whitespaceFuturePoints);
-  }, [positions, symbol, granularity, seriesTickVersion]);
+  }, [positions, symbol, granularity, seriesTickVersion, selectedContractId]);
 
   // Draw live Hover Preview Price Lines (Entry, Take Profit Point, Loss / Stop-Out Point)
   // when user hovers over Buy MULTUP or Sell MULTDOWN buttons
@@ -650,12 +734,17 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     }
 
     if (!hoverPreview) {
+      hoverPreviewActiveRef.current = false;
+      const posRange = positionAutoscaleRangeRef.current;
       mainSeries.applyOptions({
-        autoscaleInfoProvider: undefined,
+        autoscaleInfoProvider: posRange
+          ? createBoundedAutoscaleProvider(posRange.min, posRange.max)
+          : undefined,
       });
       return;
     }
 
+    hoverPreviewActiveRef.current = true;
     hoverEntryLineRef.current = mainSeries.createPriceLine({
       price: hoverPreview.entryPrice,
       color: '#38bdf8',
@@ -696,28 +785,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     );
 
     mainSeries.applyOptions({
-      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
-        const res = original();
-        if (!res || !res.priceRange) {
-          const pad = Math.max(0.0001, (targetMax - targetMin) * 0.12);
-          return {
-            priceRange: {
-              minValue: targetMin - pad,
-              maxValue: targetMax + pad,
-            },
-          };
-        }
-        const minVal = Math.min(res.priceRange.minValue, targetMin);
-        const maxVal = Math.max(res.priceRange.maxValue, targetMax);
-        const pad = Math.max(0.0001, (maxVal - minVal) * 0.08);
-        return {
-          ...res,
-          priceRange: {
-            minValue: minVal - pad,
-            maxValue: maxVal + pad,
-          },
-        };
-      },
+      autoscaleInfoProvider: createBoundedAutoscaleProvider(targetMin, targetMax),
     });
   }, [hoverPreview, symbol, granularity, seriesTickVersion]);
 
@@ -824,6 +892,82 @@ export const PriceChart: React.FC<PriceChartProps> = ({
 
       <div className="chart-stage">
         <div ref={containerRef} className="chart-canvas" />
+
+        {!hoverPreview &&
+          focusedPosition &&
+          (!focusedPosition.isSold || focusedPosition.contractId === selectedContractId) && (() => {
+            const isUp =
+              focusedPosition.contractType === 'CALL' ||
+              focusedPosition.contractType === 'CALLE' ||
+              focusedPosition.contractType === 'MULTUP';
+            const isMult =
+              focusedPosition.contractType === 'MULTUP' ||
+              focusedPosition.contractType === 'MULTDOWN';
+            const sign = focusedPosition.profit >= 0 ? '+' : '';
+            return (
+              <div
+                className="chart-hover-preview-card chart-active-trade-card tabular"
+                role="status"
+                aria-label="Focused trade levels"
+              >
+                <div className="hover-preview-title">
+                  <span className={`dir-badge ${isUp ? 'dir-rise' : 'dir-fall'}`}>
+                    {focusedPosition.contractType}
+                    {focusedPosition.multiplier ? ` ${focusedPosition.multiplier}x` : ''}
+                  </span>
+                  <strong>#{focusedPosition.contractId}</strong>
+                  <span
+                    className={`active-trade-pnl ${
+                      focusedPosition.profit >= 0 ? 'pnl-pos' : 'pnl-neg'
+                    }`}
+                  >
+                    {sign}
+                    {focusedPosition.profit.toFixed(2)} {focusedPosition.currency} (
+                    {sign}
+                    {focusedPosition.profitPercentage.toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="hover-preview-levels">
+                  <div className="hover-level-item level-tp">
+                    <span>▲ Take Profit (TP)</span>
+                    <strong>
+                      {focusedPosition.takeProfitPrice !== null
+                        ? focusedPosition.takeProfitPrice.toFixed(decimals)
+                        : 'Not set'}
+                    </strong>
+                  </div>
+                  <div className="hover-level-item level-entry">
+                    <span>▶ Entry Spot</span>
+                    <strong>
+                      {focusedPosition.entrySpot !== null
+                        ? focusedPosition.entrySpot.toFixed(decimals)
+                        : '—'}
+                    </strong>
+                  </div>
+                  {isMult && (
+                    <>
+                      <div className="hover-level-item level-loss">
+                        <span>▼ Stop Loss (SL)</span>
+                        <strong>
+                          {focusedPosition.stopLossPrice !== null
+                            ? focusedPosition.stopLossPrice.toFixed(decimals)
+                            : 'Not set'}
+                        </strong>
+                      </div>
+                      <div className="hover-level-item level-ko">
+                        <span>✕ Stop-Out (KO)</span>
+                        <strong>
+                          {focusedPosition.stopOutPrice !== null
+                            ? focusedPosition.stopOutPrice.toFixed(decimals)
+                            : '-1R Floor'}
+                        </strong>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
         {hoverPreview && (
           <div

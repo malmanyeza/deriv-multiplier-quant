@@ -6,16 +6,18 @@ interface PositionsPanelProps {
   authenticated: boolean;
   positions: NormalizedPosition[];
   sellingContractIds: Set<number>;
+  selectedContractId?: number | null;
   onSellAtMarket: (contractId: number) => Promise<void>;
-  onSelectSymbol: (symbol: string) => void;
+  onSelectTrade: (position: NormalizedPosition) => void;
 }
 
 export const PositionsPanel: React.FC<PositionsPanelProps> = ({
   authenticated,
   positions,
   sellingContractIds,
+  selectedContractId = null,
   onSellAtMarket,
-  onSelectSymbol,
+  onSelectTrade,
 }) => {
   const [tab, setTab] = useState<'open' | 'closed'>('open');
 
@@ -72,7 +74,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
                 <th>Symbol</th>
                 <th>Contract</th>
                 <th>Entry / Spot</th>
-                <th>Stop-Out / Expiry</th>
+                <th>SL / TP / Expiry</th>
                 <th>Buy Price</th>
                 <th>{tab === 'open' ? 'Indicative Value' : 'Final Sale / Payout'}</th>
                 <th>Net PnL</th>
@@ -89,14 +91,23 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
                   pos.contractType === 'MULTUP' || pos.contractType === 'MULTDOWN';
                 const isSelling = sellingContractIds.has(pos.contractId);
                 const pnlPositive = pos.profit >= 0;
+                const isSelected = selectedContractId === pos.contractId;
 
                 return (
-                  <tr key={pos.contractId}>
+                  <tr
+                    key={pos.contractId}
+                    className={`position-row-clickable${isSelected ? ' position-row-selected' : ''}`}
+                    title="Click to view this trade and its SL/TP levels on the chart"
+                    onClick={() => onSelectTrade(pos)}
+                  >
                     <td>
                       <button
                         type="button"
                         className="link-btn"
-                        onClick={() => onSelectSymbol(pos.underlyingSymbol)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectTrade(pos);
+                        }}
                       >
                         {pos.underlyingSymbol}
                       </button>
@@ -127,12 +138,15 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
                     <td>
                       {isMult ? (
                         <div className="spot-pair">
-                          <span>
+                          <span className={pos.takeProfitPrice !== null ? 'level-tp-text' : 'muted-note'}>
+                            TP: {pos.takeProfitPrice !== null ? pos.takeProfitPrice : '—'}
+                          </span>
+                          <span className={pos.stopLossPrice !== null ? 'level-sl-text' : 'muted-note'}>
+                            SL: {pos.stopLossPrice !== null ? pos.stopLossPrice : '—'}
+                          </span>
+                          <span className="muted-note">
                             KO: {pos.stopOutPrice !== null ? pos.stopOutPrice : '-1R'}
                           </span>
-                          {pos.takeProfitPrice !== null && (
-                            <span className="muted-note">TP: {pos.takeProfitPrice}</span>
-                          )}
                         </div>
                       ) : pos.tickCount !== null ? (
                         `${pos.ticksObserved} / ${pos.tickCount} ticks`
@@ -165,7 +179,10 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
                             type="button"
                             className="btn btn-outline btn-xs"
                             disabled={isSelling}
-                            onClick={() => void onSellAtMarket(pos.contractId)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void onSellAtMarket(pos.contractId);
+                            }}
                           >
                             {isSelling ? 'Selling…' : 'Sell at Market'}
                           </button>

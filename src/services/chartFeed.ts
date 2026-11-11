@@ -221,7 +221,9 @@ export interface DerivedPriceLineSpec {
 }
 
 export interface DerivedRiseFallOverlays {
+  focusPosition: NormalizedPosition | null;
   entryPriceLine: DerivedPriceLineSpec | null;
+  stopLossPriceLine?: DerivedPriceLineSpec | null;
   stopOutPriceLine?: DerivedPriceLineSpec | null;
   takeProfitPriceLine?: DerivedPriceLineSpec | null;
   markers: SeriesMarker<UTCTimestamp>[];
@@ -237,6 +239,29 @@ function isUpContract(contractType: string): boolean {
 }
 
 /**
+ * Picks the position to highlight on the chart for a given symbol,
+ * prioritizing an explicitly clicked/selected contract ID.
+ */
+export function pickChartFocusPosition(
+  positions: NormalizedPosition[],
+  chartSymbol: string,
+  selectedContractId: number | null = null,
+): NormalizedPosition | null {
+  const symbolPositions = positions.filter((p) => p.underlyingSymbol === chartSymbol);
+  if (symbolPositions.length === 0) return null;
+
+  if (selectedContractId !== null) {
+    const exact = symbolPositions.find((p) => p.contractId === selectedContractId);
+    if (exact) return exact;
+  }
+
+  return (
+    symbolPositions.find((p) => !p.isSold) ??
+    [...symbolPositions].sort((a, b) => b.purchaseTime - a.purchaseTime)[0]
+  );
+}
+
+/**
  * Derives Rise/Fall and Multipliers chart overlays strictly from normalized position state.
  */
 export function deriveRiseFallChartOverlays(
@@ -244,22 +269,21 @@ export function deriveRiseFallChartOverlays(
   chartSymbol: string,
   granularity: ChartGranularity,
   latestSeriesTime: number | null,
+  selectedContractId: number | null = null,
 ): DerivedRiseFallOverlays {
   const symbolPositions = positions.filter((p) => p.underlyingSymbol === chartSymbol);
-  if (symbolPositions.length === 0) {
+  const focus = pickChartFocusPosition(symbolPositions, chartSymbol, selectedContractId);
+  if (!focus) {
     return {
+      focusPosition: null,
       entryPriceLine: null,
+      stopLossPriceLine: null,
       stopOutPriceLine: null,
       takeProfitPriceLine: null,
       markers: [],
       whitespaceFuturePoints: [],
     };
   }
-
-  // Focus entry line on most recent open contract (or most recently settled if none open)
-  const focus =
-    symbolPositions.find((p) => !p.isSold) ??
-    [...symbolPositions].sort((a, b) => b.purchaseTime - a.purchaseTime)[0];
 
   const alignTime = (epoch: number): UTCTimestamp => {
     if (granularity === 0) return Math.floor(epoch) as UTCTimestamp;
@@ -278,25 +302,36 @@ export function deriveRiseFallChartOverlays(
       ? {
           price: focus.entrySpot,
           title: entryLabel,
-          color: isRise ? '#10b981' : '#f43f5e',
+          color: isMult ? '#38bdf8' : isRise ? '#10b981' : '#f43f5e',
+        }
+      : null;
+
+  const showLevels = !focus.isSold || focus.contractId === selectedContractId;
+
+  const takeProfitPriceLine =
+    showLevels && focus.takeProfitPrice !== null
+      ? {
+          price: focus.takeProfitPrice,
+          title: 'TP (Take Profit)',
+          color: '#10b981',
+        }
+      : null;
+
+  const stopLossPriceLine =
+    showLevels && focus.stopLossPrice !== null
+      ? {
+          price: focus.stopLossPrice,
+          title: 'SL (Stop Loss)',
+          color: '#f43f5e',
         }
       : null;
 
   const stopOutPriceLine =
-    !focus.isSold && focus.stopOutPrice !== null
+    showLevels && focus.stopOutPrice !== null
       ? {
           price: focus.stopOutPrice,
-          title: 'Stop-Out (-1R Floor)',
+          title: 'KO (Stop-Out)',
           color: '#f59e0b',
-        }
-      : null;
-
-  const takeProfitPriceLine =
-    !focus.isSold && focus.takeProfitPrice !== null
-      ? {
-          price: focus.takeProfitPrice,
-          title: 'Take Profit',
-          color: '#38bdf8',
         }
       : null;
 
@@ -389,7 +424,9 @@ export function deriveRiseFallChartOverlays(
   }
 
   return {
+    focusPosition: focus,
     entryPriceLine,
+    stopLossPriceLine,
     stopOutPriceLine,
     takeProfitPriceLine,
     markers,

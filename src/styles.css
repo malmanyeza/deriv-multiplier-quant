@@ -964,6 +964,29 @@ a:focus-visible {
   flex-direction: column;
 }
 
+.position-row-clickable {
+  cursor: pointer;
+  transition: background-color 0.14s ease;
+}
+
+.position-row-clickable:hover {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.position-row-selected {
+  background: rgba(56, 189, 248, 0.13);
+}
+
+.level-tp-text {
+  color: #34d399;
+  font-weight: 600;
+}
+
+.level-sl-text {
+  color: #fb7185;
+  font-weight: 600;
+}
+
 .status-tag {
   font-size: 11px;
   font-weight: 700;
@@ -1391,6 +1414,27 @@ a:focus-visible {
 }
 
 .hover-level-item.level-loss {
+  color: #fb7185;
+}
+
+.hover-level-item.level-ko {
+  color: #fbbf24;
+}
+
+.chart-active-trade-card {
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.active-trade-pnl {
+  margin-left: auto;
+  font-weight: 700;
+}
+
+.active-trade-pnl.pnl-pos {
+  color: #34d399;
+}
+
+.active-trade-pnl.pnl-neg {
   color: #fb7185;
 }
 
