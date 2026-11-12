@@ -13,6 +13,7 @@ import {
   resetDemoAccountBalance,
 } from './derivClient.js';
 import {
+  getLastSupabaseError,
   getRecentAuditLogs,
   getRecentTrades,
   getSupabase,
@@ -571,6 +572,7 @@ export function createApp(
     const runnerState = serverRunner.getStatus();
     res.json({
       supabaseConnected: Boolean(sb),
+      supabaseError: getLastSupabaseError(),
       hasUrl: Boolean(process.env.SUPABASE_URL),
       hasKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY),
       autoPilotAvailable: runnerState.available,

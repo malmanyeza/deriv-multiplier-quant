@@ -221,14 +221,23 @@ export class QuantServerRunner {
           this.riskPct = rp;
         }
         this.armed = Boolean(cfg.auto_pilot_armed);
+      } else if (process.env.AUTO_PILOT_DEFAULT_ARMED !== 'false') {
+        this.armed = true;
+        await saveBotConfig({
+          account_id: this.accountId,
+          selected_timeframe: this.timeframe,
+          risk_pct: this.riskPct,
+          auto_pilot_armed: true,
+        }).catch(() => {});
       }
 
       if (this.armed) {
         this.pushLog(
           'info',
-          `24/7 Server Auto-Pilot resumed (${this.timeframe.toUpperCase()} · ${(this.riskPct * 100).toFixed(2)}% risk) on ${this.accountId}.`,
+          `24/7 Server Auto-Pilot ${cfg ? 'resumed' : 'auto-armed on startup'} (${this.timeframe.toUpperCase()} · ${(this.riskPct * 100).toFixed(2)}% risk) on ${this.accountId}.`,
         );
         await this.startLoop();
+        void this.runCycle(true);
       }
     } catch (err) {
       this.lastError =

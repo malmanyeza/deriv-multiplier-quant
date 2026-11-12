@@ -1,6 +1,11 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 let supabaseClient: SupabaseClient | null = null;
+let lastSupabaseError: string | null = null;
+
+export function getLastSupabaseError(): string | null {
+  return lastSupabaseError;
+}
 
 export function getSupabase(): SupabaseClient | null {
   if (supabaseClient) return supabaseClient;
@@ -141,11 +146,14 @@ export async function getBotConfig(accountId: string): Promise<UserBotConfigReco
       .maybeSingle();
 
     if (error) {
+      lastSupabaseError = `getBotConfig: ${error.message}`;
       console.warn('[Supabase] Failed to fetch bot config:', error.message);
       return null;
     }
+    lastSupabaseError = null;
     return data as UserBotConfigRecord | null;
   } catch (err) {
+    lastSupabaseError = `getBotConfig: ${err instanceof Error ? err.message : String(err)}`;
     console.warn('[Supabase] Error fetching bot config:', err);
     return null;
   }
@@ -164,11 +172,14 @@ export async function saveBotConfig(config: UserBotConfigRecord): Promise<boolea
       { onConflict: 'account_id' },
     );
     if (error) {
+      lastSupabaseError = `saveBotConfig: ${error.message}`;
       console.warn('[Supabase] Failed to save bot config:', error.message);
       return false;
     }
+    lastSupabaseError = null;
     return true;
   } catch (err) {
+    lastSupabaseError = `saveBotConfig: ${err instanceof Error ? err.message : String(err)}`;
     console.warn('[Supabase] Error saving bot config:', err);
     return false;
   }
