@@ -40,6 +40,15 @@ const BASKET_1H = [
   { code: 'cryETHUSD', name: 'ETH/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'frxXAUUSD', name: 'Gold XAU/USD', market: 'commodities', engine: '1h' as const },
   { code: 'frxXAGUSD', name: 'Silver XAG/USD', market: 'commodities', engine: '1h' as const },
+  { code: 'frxUSDJPY', name: 'USD/JPY', market: 'forex', engine: '1h' as const },
+  { code: 'frxAUDJPY', name: 'AUD/JPY', market: 'forex', engine: '1h' as const },
+  { code: 'frxEURUSD', name: 'EUR/USD', market: 'forex', engine: '1h' as const },
+  { code: 'frxUSDCAD', name: 'USD/CAD', market: 'forex', engine: '1h' as const },
+  { code: 'frxGBPJPY', name: 'GBP/JPY', market: 'forex', engine: '1h' as const },
+  { code: 'frxUSDCHF', name: 'USD/CHF', market: 'forex', engine: '1h' as const },
+  { code: 'frxAUDUSD', name: 'AUD/USD', market: 'forex', engine: '1h' as const },
+  { code: 'frxGBPUSD', name: 'GBP/USD', market: 'forex', engine: '1h' as const },
+  { code: 'frxGBPAUD', name: 'GBP/AUD', market: 'forex', engine: '1h' as const },
 ];
 
 interface SymbolMultiplierRule {
@@ -847,7 +856,7 @@ export class QuantServerRunner {
               ev.signalDirection &&
               !ev.riskPlan.circuitBreakerTripped &&
               !alreadyOpenOnSymbol &&
-              openTotal < 4
+              openTotal < 6
             ) {
               const chosenMultiplier = pickClosestMultiplier(
                 rule.multiplierRange,
@@ -934,6 +943,7 @@ export class QuantServerRunner {
             const msg = symErr instanceof Error ? symErr.message : 'scan error';
             summaries.push(`${item.code}: err(${msg})`);
           }
+          await new Promise((r) => setTimeout(r, 180));
         }
 
         this.lastScannedBarByEngine[group.engine] = latestCompletedBarEpoch;

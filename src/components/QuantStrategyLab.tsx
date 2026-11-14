@@ -97,6 +97,15 @@ const BASKET_1H = [
   { code: 'cryETHUSD', name: 'ETH/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'frxXAUUSD', name: 'Gold/USD', market: 'commodities', engine: '1h' as const },
   { code: 'frxXAGUSD', name: 'Silver/USD', market: 'commodities', engine: '1h' as const },
+  { code: 'frxUSDJPY', name: 'USD/JPY', market: 'forex', engine: '1h' as const },
+  { code: 'frxAUDJPY', name: 'AUD/JPY', market: 'forex', engine: '1h' as const },
+  { code: 'frxEURUSD', name: 'EUR/USD', market: 'forex', engine: '1h' as const },
+  { code: 'frxUSDCAD', name: 'USD/CAD', market: 'forex', engine: '1h' as const },
+  { code: 'frxGBPJPY', name: 'GBP/JPY', market: 'forex', engine: '1h' as const },
+  { code: 'frxUSDCHF', name: 'USD/CHF', market: 'forex', engine: '1h' as const },
+  { code: 'frxAUDUSD', name: 'AUD/USD', market: 'forex', engine: '1h' as const },
+  { code: 'frxGBPUSD', name: 'GBP/USD', market: 'forex', engine: '1h' as const },
+  { code: 'frxGBPAUD', name: 'GBP/AUD', market: 'forex', engine: '1h' as const },
 ];
 
 const BASKET_DUAL = [...BASKET_15M, ...BASKET_1H];
@@ -447,7 +456,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       });
     } else if (
       (selectedTimeframe === '15m' || selectedTimeframe === 'dual') &&
-      positions.filter((p) => !p.isSold).length < 4
+      positions.filter((p) => !p.isSold).length < 6
     ) {
       lastAutoActedBarTimeRef.current = barTime;
       void (async () => {
@@ -568,7 +577,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
             ticks_history: item.code,
             style: 'candles',
             granularity: gran,
-            count: 200,
+            count: 350,
             end: 'latest',
           },
           { expectedGeneration: connectionGeneration, timeoutMs: 8_000 },

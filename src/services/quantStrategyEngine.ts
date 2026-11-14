@@ -175,15 +175,18 @@ export interface SymbolStrategyProfile {
   longBiasOnly: boolean;
   pureTrendOnly: boolean;
   donchianLookback: number;
+  trendAdxMin1h: number;
   atrCutoff1h: number;
   macroEmaPeriod: number;
   trailEmaPeriod: number;
   trendTpMult15m: number;
+  trendTpMult1h: number | null;
   ratchetStages15m: Array<[number, number]>;
   ratchetStages1h: Array<[number, number]>;
   recommendedMultiplier15m: number;
   recommendedMultiplier1h: number;
   convictionWeight: number;
+  sessionFilterLondonNy: boolean;
 }
 
 export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile {
@@ -193,10 +196,12 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       longBiasOnly: false,
       pureTrendOnly: true,
       donchianLookback: 36,
+      trendAdxMin1h: 24,
       atrCutoff1h: 0.0065,
       macroEmaPeriod: 200,
       trailEmaPeriod: 50,
       trendTpMult15m: 2.0,
+      trendTpMult1h: null,
       ratchetStages15m: [
         [0.75, 0.2],
         [1.2, 0.6],
@@ -205,6 +210,7 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       recommendedMultiplier15m: 40,
       recommendedMultiplier1h: 100,
       convictionWeight: 3.8 / 3.0, // 3.80% stake at 3.0% base risk
+      sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'cryETHUSD') {
@@ -213,10 +219,12 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       longBiasOnly: false,
       pureTrendOnly: true,
       donchianLookback: 48,
+      trendAdxMin1h: 24,
       atrCutoff1h: 0.0075,
       macroEmaPeriod: 0,
       trailEmaPeriod: 50,
       trendTpMult15m: 2.0,
+      trendTpMult1h: null,
       ratchetStages15m: [
         [0.75, 0.2],
         [1.2, 0.6],
@@ -225,6 +233,7 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       recommendedMultiplier15m: 40,
       recommendedMultiplier1h: 100,
       convictionWeight: 2.8 / 3.0, // 2.80% stake at 3.0% base risk
+      sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'frxXAUUSD') {
@@ -233,18 +242,21 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       longBiasOnly: true,
       pureTrendOnly: true,
       donchianLookback: 72,
+      trendAdxMin1h: 20,
       atrCutoff1h: 0.0065,
-      macroEmaPeriod: 0,
+      macroEmaPeriod: 200,
       trailEmaPeriod: 50,
       trendTpMult15m: 2.0,
+      trendTpMult1h: null,
       ratchetStages15m: [
         [0.75, 0.2],
         [1.2, 0.6],
       ],
       ratchetStages1h: [],
       recommendedMultiplier15m: 40,
-      recommendedMultiplier1h: 100,
-      convictionWeight: 2.8 / 3.0,
+      recommendedMultiplier1h: 200,
+      convictionWeight: 3.8 / 3.0,
+      sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'frxXAGUSD') {
@@ -252,19 +264,238 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       commissionPer100Stake: 2.5,
       longBiasOnly: false,
       pureTrendOnly: true,
-      donchianLookback: 48,
+      donchianLookback: 24,
+      trendAdxMin1h: 24,
       atrCutoff1h: 0.0065,
       macroEmaPeriod: 0,
-      trailEmaPeriod: 20,
+      trailEmaPeriod: 50,
       trendTpMult15m: 2.0,
+      trendTpMult1h: null,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [],
+      recommendedMultiplier15m: 40,
+      recommendedMultiplier1h: 300,
+      convictionWeight: 3.5 / 3.0,
+      sessionFilterLondonNy: false,
+    };
+  }
+  if (symbol === 'frxUSDJPY') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: true,
+      donchianLookback: 72,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0045,
+      macroEmaPeriod: 0,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: null,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [],
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 300,
+      convictionWeight: 3.5 / 3.0,
+      sessionFilterLondonNy: false,
+    };
+  }
+  if (symbol === 'frxAUDJPY') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: true,
+      donchianLookback: 72,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0045,
+      macroEmaPeriod: 0,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: null,
       ratchetStages15m: [
         [0.75, 0.2],
         [1.2, 0.6],
       ],
       ratchetStages1h: [[0.8, 0.2]],
-      recommendedMultiplier15m: 40,
-      recommendedMultiplier1h: 100,
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 300,
+      convictionWeight: 3.5 / 3.0,
+      sessionFilterLondonNy: true,
+    };
+  }
+  if (symbol === 'frxEURUSD') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: true,
+      donchianLookback: 72,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0045,
+      macroEmaPeriod: 200,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 300,
+      convictionWeight: 3.2 / 3.0,
+      sessionFilterLondonNy: true,
+    };
+  }
+  if (symbol === 'frxUSDCAD') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: true,
+      donchianLookback: 24,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0045,
+      macroEmaPeriod: 0,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: null,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [[0.8, 0.2]],
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 300,
+      convictionWeight: 3.0 / 3.0,
+      sessionFilterLondonNy: false,
+    };
+  }
+  if (symbol === 'frxGBPJPY') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: true,
+      donchianLookback: 72,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0045,
+      macroEmaPeriod: 0,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: null,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [[0.8, 0.2]],
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 300,
+      convictionWeight: 3.2 / 3.0,
+      sessionFilterLondonNy: true,
+    };
+  }
+  if (symbol === 'frxUSDCHF') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: true,
+      donchianLookback: 48,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0045,
+      macroEmaPeriod: 200,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 300,
+      convictionWeight: 3.2 / 3.0,
+      sessionFilterLondonNy: false,
+    };
+  }
+  if (symbol === 'frxAUDUSD') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: true,
+      donchianLookback: 72,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0045,
+      macroEmaPeriod: 200,
+      trailEmaPeriod: 30,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: null,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [],
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 300,
       convictionWeight: 2.8 / 3.0,
+      sessionFilterLondonNy: true,
+    };
+  }
+  if (symbol === 'frxGBPUSD') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: false,
+      donchianLookback: 72,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0045,
+      macroEmaPeriod: 200,
+      trailEmaPeriod: 20,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 300,
+      convictionWeight: 2.8 / 3.0,
+      sessionFilterLondonNy: false,
+    };
+  }
+  if (symbol === 'frxGBPAUD') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: true,
+      donchianLookback: 24,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0045,
+      macroEmaPeriod: 200,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: null,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [],
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 300,
+      convictionWeight: 2.8 / 3.0,
+      sessionFilterLondonNy: true,
     };
   }
   if (symbol === '1HZ100V') {
@@ -273,10 +504,12 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       longBiasOnly: false,
       pureTrendOnly: false,
       donchianLookback: 32,
+      trendAdxMin1h: 24,
       atrCutoff1h: 0.0065,
       macroEmaPeriod: 200,
       trailEmaPeriod: 30,
       trendTpMult15m: 2.0,
+      trendTpMult1h: null,
       ratchetStages15m: [
         [0.75, 0.2],
         [1.2, 0.6],
@@ -285,6 +518,7 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       recommendedMultiplier15m: 40,
       recommendedMultiplier1h: 100,
       convictionWeight: 3.8 / 3.0,
+      sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'R_75') {
@@ -293,10 +527,12 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       longBiasOnly: false,
       pureTrendOnly: false,
       donchianLookback: 32,
+      trendAdxMin1h: 24,
       atrCutoff1h: 0.0065,
       macroEmaPeriod: 0,
       trailEmaPeriod: 50,
       trendTpMult15m: 2.0,
+      trendTpMult1h: null,
       ratchetStages15m: [
         [0.75, 0.2],
         [1.2, 0.6],
@@ -305,6 +541,7 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       recommendedMultiplier15m: 50,
       recommendedMultiplier1h: 100,
       convictionWeight: 3.8 / 3.0,
+      sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'OTC_NDX' || symbol === 'OTC_SPC' || symbol === 'OTC_DJI') {
@@ -313,10 +550,12 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       longBiasOnly: true,
       pureTrendOnly: false,
       donchianLookback: 48,
+      trendAdxMin1h: 24,
       atrCutoff1h: 0.0065,
       macroEmaPeriod: 0,
       trailEmaPeriod: 30,
       trendTpMult15m: 2.0,
+      trendTpMult1h: null,
       ratchetStages15m: [
         [0.75, 0.2],
         [1.2, 0.6],
@@ -325,6 +564,7 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       recommendedMultiplier15m: 40,
       recommendedMultiplier1h: 100,
       convictionWeight: 2.8 / 3.0,
+      sessionFilterLondonNy: false,
     };
   }
   return {
@@ -332,10 +572,12 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
     longBiasOnly: false,
     pureTrendOnly: false,
     donchianLookback: 48,
+    trendAdxMin1h: 24,
     atrCutoff1h: 0.0065,
     macroEmaPeriod: 0,
     trailEmaPeriod: 30,
     trendTpMult15m: 2.0,
+    trendTpMult1h: null,
     ratchetStages15m: [
       [0.75, 0.2],
       [1.2, 0.6],
@@ -344,6 +586,7 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
     recommendedMultiplier15m: 40,
     recommendedMultiplier1h: 100,
     convictionWeight: 1.0,
+    sessionFilterLondonNy: false,
   };
 }
 
@@ -477,10 +720,10 @@ export function evaluateQuantSignal(params: {
   } else if (dailyRealizedR <= -4.0) {
     circuitBreakerTripped = true;
     circuitBreakerReason = `Daily -4.0R circuit breaker reached (${dailyRealizedR.toFixed(2)}R today). Pausing new entries.`;
-  } else if (openPositions.length >= 4) {
+  } else if (openPositions.length >= 6) {
     circuitBreakerTripped = true;
     circuitBreakerReason =
-      'Max 4 concurrent portfolio positions active (Tier 3 portfolio risk cap reached).';
+      'Max 6 concurrent portfolio positions active (Portfolio E risk cap reached).';
   }
 
   const isSynthetic = isCsprng || symbol.startsWith('1HZ') || symbol.startsWith('R_');
@@ -504,9 +747,9 @@ export function evaluateQuantSignal(params: {
 
   const lookback = is5m ? 20 : is15m ? 32 : profile.donchianLookback;
   const atrCutoff = is5m ? 0.018 : is15m ? 0.015 : profile.atrCutoff1h;
-  const trendAdxMin = is5m ? 28 : is15m ? 28 : symbol === 'frxXAUUSD' ? 20 : 24;
-  const mrTpMult = is5m ? 1.0 : is15m ? 1.2 : 1.6;
-  const trendTpMult = is15m || is5m ? profile.trendTpMult15m : null;
+  const trendAdxMin = is5m ? 28 : is15m ? 28 : profile.trendAdxMin1h;
+  const mrTpMult = is5m ? 1.0 : is15m || symbol.startsWith('frx') ? 1.2 : 1.6;
+  const trendTpMult = is15m || is5m ? profile.trendTpMult15m : profile.trendTpMult1h;
 
   if (bars.length < 110) {
     return {
@@ -685,6 +928,27 @@ export function evaluateQuantSignal(params: {
       exitSignalForOpenPosition,
       riskPlan: baseRiskPlan,
     };
+  }
+
+  // London/New York Session Gate (06:00 - 18:00 UTC) for calibrated 1H Forex pairs
+  if (!is15m && !is5m && profile.sessionFilterLondonNy) {
+    const barHourUtc = new Date(Number(bar.time) * 1000).getUTCHours();
+    if (barHourUtc < 6 || barHourUtc > 18) {
+      return {
+        symbol,
+        isCsprng,
+        regime: 'NEUTRAL_TRANSITION',
+        chaosGatePassed: true,
+        indicators,
+        signalDirection: null,
+        signalMode: null,
+        signalHeadline: `Asian Session Filter Active (${String(barHourUtc).padStart(2, '0')}:00 UTC — Waiting for London/NY 06:00–18:00 UTC)`,
+        signalRationale:
+          'Calibrated Forex pair requires London/New York institutional liquidity (06:00–18:00 UTC) for new breakout entries. Open positions remain monitored 24/5.',
+        exitSignalForOpenPosition,
+        riskPlan: baseRiskPlan,
+      };
+    }
   }
 
   // Check prolonged chop gate on intraday timeframes (15m/5m)
