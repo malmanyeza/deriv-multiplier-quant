@@ -646,8 +646,8 @@ describe('Quant Strategy Engine (Chaos Gate, CSPRNG Block & Quarter-Kelly Risk)'
       riskPctOfBalance: 0.03,
       timeframe: '1h',
     });
-    expect(evXag.riskPlan.recommendedStake).toBe(350); // 3.50% on Silver (Portfolio E upgrade)
-    expect(evXag.riskPlan.recommendedMultiplier).toBe(300);
+    expect(evXag.riskPlan.recommendedStake).toBe(320); // 3.20% on Silver (WF-13)
+    expect(evXag.riskPlan.recommendedMultiplier).toBe(100);
 
     const evEth = evaluateQuantSignal({
       symbol: 'cryETHUSD',
@@ -670,8 +670,8 @@ describe('Quant Strategy Engine (Chaos Gate, CSPRNG Block & Quarter-Kelly Risk)'
       riskPctOfBalance: 0.03,
       timeframe: '1h',
     });
-    expect(evEurUsd.riskPlan.recommendedStake).toBe(320); // 3.20% on EUR/USD (Portfolio E Forex)
-    expect(evEurUsd.riskPlan.recommendedMultiplier).toBe(300);
+    expect(evEurUsd.riskPlan.recommendedStake).toBe(300); // 3.00% on EUR/USD (WF-13)
+    expect(evEurUsd.riskPlan.recommendedMultiplier).toBe(200);
 
     // 2. Verify Two-Stage Profit-Ratchet thresholds on 15M and 1H
     expect(getRatchetFloorForPeakR('R_75', '15m', 0.50)).toBeNull();

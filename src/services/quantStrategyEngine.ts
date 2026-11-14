@@ -265,7 +265,53 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       longBiasOnly: false,
       pureTrendOnly: true,
       donchianLookback: 24,
-      trendAdxMin1h: 24,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0065,
+      macroEmaPeriod: 0,
+      trailEmaPeriod: 30,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: null,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [[0.8, 0.2]],
+      recommendedMultiplier15m: 40,
+      recommendedMultiplier1h: 100,
+      convictionWeight: 3.2 / 3.0,
+      sessionFilterLondonNy: false,
+    };
+  }
+  if (symbol === 'frxUSDCHF') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: false,
+      donchianLookback: 24,
+      trendAdxMin1h: 22,
+      atrCutoff1h: 0.0065,
+      macroEmaPeriod: 200,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [[0.8, 0.2]],
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 300,
+      convictionWeight: 3.5 / 3.0,
+      sessionFilterLondonNy: false,
+    };
+  }
+  if (symbol === 'frxUSDJPY') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: false,
+      donchianLookback: 72,
+      trendAdxMin1h: 22,
       atrCutoff1h: 0.0065,
       macroEmaPeriod: 0,
       trailEmaPeriod: 50,
@@ -276,21 +322,21 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
         [1.2, 0.6],
       ],
       ratchetStages1h: [],
-      recommendedMultiplier15m: 40,
+      recommendedMultiplier15m: 100,
       recommendedMultiplier1h: 300,
       convictionWeight: 3.5 / 3.0,
-      sessionFilterLondonNy: false,
+      sessionFilterLondonNy: true,
     };
   }
-  if (symbol === 'frxUSDJPY') {
+  if (symbol === 'frxGBPJPY') {
     return {
       commissionPer100Stake: 2.5,
       longBiasOnly: false,
-      pureTrendOnly: true,
+      pureTrendOnly: false,
       donchianLookback: 72,
       trendAdxMin1h: 22,
-      atrCutoff1h: 0.0045,
-      macroEmaPeriod: 0,
+      atrCutoff1h: 0.0065,
+      macroEmaPeriod: 200,
       trailEmaPeriod: 50,
       trendTpMult15m: 2.0,
       trendTpMult1h: null,
@@ -301,8 +347,8 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       ratchetStages1h: [],
       recommendedMultiplier15m: 100,
       recommendedMultiplier1h: 300,
-      convictionWeight: 3.5 / 3.0,
-      sessionFilterLondonNy: false,
+      convictionWeight: 3.2 / 3.0,
+      sessionFilterLondonNy: true,
     };
   }
   if (symbol === 'frxAUDJPY') {
@@ -312,60 +358,11 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       pureTrendOnly: true,
       donchianLookback: 72,
       trendAdxMin1h: 22,
-      atrCutoff1h: 0.0045,
-      macroEmaPeriod: 0,
-      trailEmaPeriod: 50,
-      trendTpMult15m: 2.0,
-      trendTpMult1h: null,
-      ratchetStages15m: [
-        [0.75, 0.2],
-        [1.2, 0.6],
-      ],
-      ratchetStages1h: [[0.8, 0.2]],
-      recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 300,
-      convictionWeight: 3.5 / 3.0,
-      sessionFilterLondonNy: true,
-    };
-  }
-  if (symbol === 'frxEURUSD') {
-    return {
-      commissionPer100Stake: 2.5,
-      longBiasOnly: false,
-      pureTrendOnly: true,
-      donchianLookback: 72,
-      trendAdxMin1h: 22,
-      atrCutoff1h: 0.0045,
+      atrCutoff1h: 0.0065,
       macroEmaPeriod: 200,
       trailEmaPeriod: 50,
       trendTpMult15m: 2.0,
       trendTpMult1h: 2.0,
-      ratchetStages15m: [
-        [0.75, 0.2],
-        [1.2, 0.6],
-      ],
-      ratchetStages1h: [
-        [0.75, 0.2],
-        [1.2, 0.6],
-      ],
-      recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 300,
-      convictionWeight: 3.2 / 3.0,
-      sessionFilterLondonNy: true,
-    };
-  }
-  if (symbol === 'frxUSDCAD') {
-    return {
-      commissionPer100Stake: 2.5,
-      longBiasOnly: false,
-      pureTrendOnly: true,
-      donchianLookback: 24,
-      trendAdxMin1h: 22,
-      atrCutoff1h: 0.0045,
-      macroEmaPeriod: 0,
-      trailEmaPeriod: 50,
-      trendTpMult15m: 2.0,
-      trendTpMult1h: null,
       ratchetStages15m: [
         [0.75, 0.2],
         [1.2, 0.6],
@@ -377,13 +374,36 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       sessionFilterLondonNy: false,
     };
   }
-  if (symbol === 'frxGBPJPY') {
+  if (symbol === 'frxEURUSD') {
     return {
       commissionPer100Stake: 2.5,
       longBiasOnly: false,
-      pureTrendOnly: true,
-      donchianLookback: 72,
+      pureTrendOnly: false,
+      donchianLookback: 24,
       trendAdxMin1h: 22,
+      atrCutoff1h: 0.0045,
+      macroEmaPeriod: 200,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      trendTpMult1h: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [[0.8, 0.2]],
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 200,
+      convictionWeight: 3.0 / 3.0,
+      sessionFilterLondonNy: true,
+    };
+  }
+  if (symbol === 'frxGBPUSD') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: false,
+      donchianLookback: 48,
+      trendAdxMin1h: 26,
       atrCutoff1h: 0.0045,
       macroEmaPeriod: 0,
       trailEmaPeriod: 50,
@@ -393,82 +413,7 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
         [0.75, 0.2],
         [1.2, 0.6],
       ],
-      ratchetStages1h: [[0.8, 0.2]],
-      recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 300,
-      convictionWeight: 3.2 / 3.0,
-      sessionFilterLondonNy: true,
-    };
-  }
-  if (symbol === 'frxUSDCHF') {
-    return {
-      commissionPer100Stake: 2.5,
-      longBiasOnly: false,
-      pureTrendOnly: true,
-      donchianLookback: 48,
-      trendAdxMin1h: 22,
-      atrCutoff1h: 0.0045,
-      macroEmaPeriod: 200,
-      trailEmaPeriod: 50,
-      trendTpMult15m: 2.0,
-      trendTpMult1h: 2.0,
-      ratchetStages15m: [
-        [0.75, 0.2],
-        [1.2, 0.6],
-      ],
-      ratchetStages1h: [
-        [0.75, 0.2],
-        [1.2, 0.6],
-      ],
-      recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 300,
-      convictionWeight: 3.2 / 3.0,
-      sessionFilterLondonNy: false,
-    };
-  }
-  if (symbol === 'frxAUDUSD') {
-    return {
-      commissionPer100Stake: 2.5,
-      longBiasOnly: false,
-      pureTrendOnly: true,
-      donchianLookback: 72,
-      trendAdxMin1h: 22,
-      atrCutoff1h: 0.0045,
-      macroEmaPeriod: 200,
-      trailEmaPeriod: 30,
-      trendTpMult15m: 2.0,
-      trendTpMult1h: null,
-      ratchetStages15m: [
-        [0.75, 0.2],
-        [1.2, 0.6],
-      ],
       ratchetStages1h: [],
-      recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 300,
-      convictionWeight: 2.8 / 3.0,
-      sessionFilterLondonNy: true,
-    };
-  }
-  if (symbol === 'frxGBPUSD') {
-    return {
-      commissionPer100Stake: 2.5,
-      longBiasOnly: false,
-      pureTrendOnly: false,
-      donchianLookback: 72,
-      trendAdxMin1h: 22,
-      atrCutoff1h: 0.0045,
-      macroEmaPeriod: 200,
-      trailEmaPeriod: 20,
-      trendTpMult15m: 2.0,
-      trendTpMult1h: 2.0,
-      ratchetStages15m: [
-        [0.75, 0.2],
-        [1.2, 0.6],
-      ],
-      ratchetStages1h: [
-        [0.75, 0.2],
-        [1.2, 0.6],
-      ],
       recommendedMultiplier15m: 100,
       recommendedMultiplier1h: 300,
       convictionWeight: 2.8 / 3.0,
@@ -483,19 +428,19 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       donchianLookback: 24,
       trendAdxMin1h: 22,
       atrCutoff1h: 0.0045,
-      macroEmaPeriod: 200,
+      macroEmaPeriod: 0,
       trailEmaPeriod: 50,
       trendTpMult15m: 2.0,
-      trendTpMult1h: null,
+      trendTpMult1h: 2.0,
       ratchetStages15m: [
         [0.75, 0.2],
         [1.2, 0.6],
       ],
-      ratchetStages1h: [],
+      ratchetStages1h: [[0.8, 0.2]],
       recommendedMultiplier15m: 100,
       recommendedMultiplier1h: 300,
       convictionWeight: 2.8 / 3.0,
-      sessionFilterLondonNy: true,
+      sessionFilterLondonNy: false,
     };
   }
   if (symbol === '1HZ100V') {
