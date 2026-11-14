@@ -20,6 +20,7 @@ import {
 } from '../adapters/multipliersAdapter';
 import {
   evaluateQuantSignal,
+  getRatchetFloorForPeakR,
   runChronologicalWalkForward,
 } from '../services/quantStrategyEngine';
 import { pickClosestMultiplier } from '../../server/quantRunner';
@@ -612,6 +613,89 @@ describe('Quant Strategy Engine (Chaos Gate, CSPRNG Block & Quarter-Kelly Risk)'
 
     expect(ev.exitSignalForOpenPosition.shouldExit).toBe(true);
     expect(ev.exitSignalForOpenPosition.contractId).toBe(777);
+  });
+
+  it('applies Tier 3 Conviction Sizing (3.8% core / 2.8% diversifier) and Two-Stage Profit-Ratchet floors', () => {
+    const bars = Array.from({ length: 140 }, (_, i) => ({
+      time: (1700000000 + i * 900) as UTCTimestamp,
+      open: 40000 + i * 15,
+      high: 40020 + i * 15,
+      low: 39990 + i * 15,
+      close: 40010 + i * 15,
+    }));
+
+    // 1. Verify Tier 3 Conviction Sizing at 3.0% base risk
+    const evR75 = evaluateQuantSignal({
+      symbol: 'R_75',
+      market: 'synthetic_index',
+      bars,
+      accountBalance: 10000,
+      positions: [],
+      riskPctOfBalance: 0.03,
+      timeframe: '15m',
+    });
+    expect(evR75.riskPlan.recommendedStake).toBe(380); // 3.80% on R_75
+    expect(evR75.riskPlan.recommendedMultiplier).toBe(50);
+
+    const evXag = evaluateQuantSignal({
+      symbol: 'frxXAGUSD',
+      market: 'commodities',
+      bars,
+      accountBalance: 10000,
+      positions: [],
+      riskPctOfBalance: 0.03,
+      timeframe: '1h',
+    });
+    expect(evXag.riskPlan.recommendedStake).toBe(280); // 2.80% on Silver
+    expect(evXag.riskPlan.recommendedMultiplier).toBe(100);
+
+    // 2. Verify Two-Stage Profit-Ratchet thresholds on 15M and 1H
+    expect(getRatchetFloorForPeakR('R_75', '15m', 0.50)).toBeNull();
+    expect(getRatchetFloorForPeakR('R_75', '15m', 0.81)).toEqual({
+      stage: 1,
+      floorR: 0.2,
+      triggerR: 0.75,
+    });
+    expect(getRatchetFloorForPeakR('R_75', '15m', 1.25)).toEqual({
+      stage: 2,
+      floorR: 0.6,
+      triggerR: 1.2,
+    });
+    expect(getRatchetFloorForPeakR('cryBTCUSD', '1h', 0.85)).toEqual({
+      stage: 1,
+      floorR: 0.2,
+      triggerR: 0.8,
+    });
+
+    // 3. Verify Profit-Ratchet exit fires when position pulls back to +0.18R after peaking at +0.85R
+    const openRatchetedPos = {
+      contractId: 888,
+      underlyingSymbol: 'R_75',
+      contractType: 'MULTUP',
+      isSold: false,
+      buyPrice: 380,
+      profit: 68.4, // +0.18R (below +0.20R Stage 1 floor)
+      entrySpot: 42050,
+      takeProfitPrice: 43800, // +2.0R trend TP (should NOT be mistaken for MR)
+      stopLossPrice: null,
+      multiplier: 50,
+      purchaseTime: 1700000000 + 135 * 900,
+    } as any;
+
+    const peakMap = new Map<number, number>([[888, 0.85]]);
+    const evExit = evaluateQuantSignal({
+      symbol: 'R_75',
+      market: 'synthetic_index',
+      bars,
+      accountBalance: 10000,
+      positions: [openRatchetedPos],
+      riskPctOfBalance: 0.03,
+      timeframe: '15m',
+      peakRByContract: peakMap,
+    });
+    expect(evExit.exitSignalForOpenPosition.shouldExit).toBe(true);
+    expect(evExit.exitSignalForOpenPosition.contractId).toBe(888);
+    expect(evExit.exitSignalForOpenPosition.reason).toContain('Profit-Ratchet Stage 1');
   });
 });
 

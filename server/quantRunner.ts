@@ -12,6 +12,7 @@ import {
 } from './supabaseClient.js';
 import {
   evaluateQuantSignal,
+  getRatchetFloorForPeakR,
   type QuantTimeframe,
 } from '../src/services/quantStrategyEngine';
 import { normalizeCandleHistory, type CandlePoint } from '../src/services/chartFeed';
@@ -38,7 +39,7 @@ const BASKET_1H = [
   { code: 'cryBTCUSD', name: 'BTC/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'cryETHUSD', name: 'ETH/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'frxXAUUSD', name: 'Gold XAU/USD', market: 'commodities', engine: '1h' as const },
-  { code: 'OTC_NDX', name: 'US Tech 100', market: 'indices', engine: '1h' as const },
+  { code: 'frxXAGUSD', name: 'Silver XAG/USD', market: 'commodities', engine: '1h' as const },
 ];
 
 interface SymbolMultiplierRule {
@@ -135,6 +136,9 @@ export class QuantServerRunner {
     '5m': 0,
   };
   private readonly rulesCache = new Map<string, SymbolMultiplierRule>();
+  private readonly peakRByContract = new Map<number, number>();
+  private readonly armedStageByContract = new Map<number, number>();
+  private readonly sellingContracts = new Set<number>();
   private openPositionsCount = 0;
   private readonly recentLogs: ServerAuditEntry[] = [];
 
@@ -480,6 +484,10 @@ export class QuantServerRunner {
             const wire = msg.proposal_open_contract as ProposalOpenContractWire;
             const norm = normalizeOpenContract(wire);
             if (norm && norm.isSold) {
+              this.peakRByContract.delete(norm.contractId);
+              this.armedStageByContract.delete(norm.contractId);
+              this.sellingContracts.delete(norm.contractId);
+
               void saveQuantTrade({
                 contract_id: norm.contractId,
                 account_id: this.accountId ?? 'demo',
@@ -510,6 +518,8 @@ export class QuantServerRunner {
                 `Position closed on ${norm.underlyingSymbol} (#${norm.contractId}): ${norm.profit >= 0 ? '+' : ''}${norm.profit.toFixed(2)} ${this.currency} (${norm.status.toUpperCase()}).`,
                 { symbol: norm.underlyingSymbol },
               );
+            } else if (norm && !norm.isSold) {
+              void this.checkAndExecuteProfitRatchet(norm);
             }
           }
         } catch {
@@ -658,6 +668,65 @@ export class QuantServerRunner {
     return list;
   }
 
+  private async checkAndExecuteProfitRatchet(
+    norm: NormalizedPosition,
+  ): Promise<boolean> {
+    if (norm.isSold || norm.buyPrice <= 0) {
+      this.peakRByContract.delete(norm.contractId);
+      this.armedStageByContract.delete(norm.contractId);
+      this.sellingContracts.delete(norm.contractId);
+      return false;
+    }
+
+    const currentR = norm.profit / norm.buyPrice;
+    const prevPeak = this.peakRByContract.get(norm.contractId) ?? currentR;
+    const peakR = Math.max(prevPeak, currentR);
+    this.peakRByContract.set(norm.contractId, peakR);
+
+    const engine: QuantTimeframe =
+      norm.underlyingSymbol.startsWith('1HZ') ||
+      norm.underlyingSymbol.startsWith('R_')
+        ? '15m'
+        : '1h';
+
+    const ratchet = getRatchetFloorForPeakR(
+      norm.underlyingSymbol,
+      engine,
+      peakR,
+    );
+    if (!ratchet) return false;
+
+    const prevStage = this.armedStageByContract.get(norm.contractId) ?? 0;
+    if (ratchet.stage > prevStage) {
+      this.armedStageByContract.set(norm.contractId, ratchet.stage);
+      this.pushLog(
+        'info',
+        `Profit-Ratchet Stage ${ratchet.stage} ARMED on ${norm.underlyingSymbol} (#${norm.contractId}): floating peak +${(peakR * 100).toFixed(1)}% reached -> locked +${(ratchet.floorR * 100).toFixed(0)}% profit floor.`,
+        { symbol: norm.underlyingSymbol, timeframe: engine },
+      );
+    }
+
+    if (
+      currentR <= ratchet.floorR &&
+      !this.sellingContracts.has(norm.contractId)
+    ) {
+      this.sellingContracts.add(norm.contractId);
+      try {
+        await this.request({ sell: norm.contractId, price: 0 }, 10_000);
+        this.pushLog(
+          'exit',
+          `Server Profit-Ratchet Exit on ${norm.underlyingSymbol} (#${norm.contractId}): locked +${(ratchet.floorR * 100).toFixed(0)}% floor triggered at ${(currentR * 100).toFixed(1)}% after +${(peakR * 100).toFixed(1)}% peak.`,
+          { symbol: norm.underlyingSymbol, timeframe: engine },
+        );
+        return true;
+      } catch {
+        this.sellingContracts.delete(norm.contractId);
+      }
+    }
+
+    return false;
+  }
+
   private async runCycle(forceScan: boolean): Promise<void> {
     if (this.scanInFlight || this.disposed) return;
     this.scanInFlight = true;
@@ -702,6 +771,11 @@ export class QuantServerRunner {
 
       const positions = await this.fetchPositionsSnapshot();
 
+      // Always check live Profit-Ratchet on open positions every 15s (even between candle closes)
+      for (const openPos of positions.filter((p) => !p.isSold)) {
+        await this.checkAndExecuteProfitRatchet(openPos);
+      }
+
       for (const group of enginesToCheck) {
         const latestCompletedBarEpoch =
           Math.floor(nowSec / group.granularity) * group.granularity -
@@ -731,7 +805,7 @@ export class QuantServerRunner {
               ticks_history: item.code,
               style: 'candles',
               granularity: group.granularity,
-              count: 250,
+              count: 350,
               end: 'latest',
             });
 
@@ -745,6 +819,7 @@ export class QuantServerRunner {
               stakeLimits: { min: rule.minStake, max: rule.maxStake },
               riskPctOfBalance: this.riskPct,
               timeframe: group.engine,
+              peakRByContract: this.peakRByContract,
             });
 
             // 1. Check automated exit first
@@ -772,7 +847,7 @@ export class QuantServerRunner {
               ev.signalDirection &&
               !ev.riskPlan.circuitBreakerTripped &&
               !alreadyOpenOnSymbol &&
-              openTotal < 3
+              openTotal < 4
             ) {
               const chosenMultiplier = pickClosestMultiplier(
                 rule.multiplierRange,

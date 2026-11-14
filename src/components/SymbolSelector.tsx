@@ -33,7 +33,7 @@ const ACTIVE_BOT_MARKETS: BotMarketMeta[] = [
   { code: 'cryBTCUSD', fallbackName: 'BTC/USD', engine: '1H Macro', multLabel: '100x' },
   { code: 'cryETHUSD', fallbackName: 'ETH/USD', engine: '1H Macro', multLabel: '100x' },
   { code: 'frxXAUUSD', fallbackName: 'Gold/USD', engine: '1H Macro', multLabel: '100x' },
-  { code: 'OTC_NDX', fallbackName: 'US Tech 100', engine: '1H Macro', multLabel: '100x' },
+  { code: 'frxXAGUSD', fallbackName: 'Silver/USD', engine: '1H Macro', multLabel: '100x' },
   { code: '1HZ100V', fallbackName: 'Volatility 100 (1s)', engine: '15M Turbo', multLabel: '40x' },
   { code: 'R_75', fallbackName: 'Volatility 75', engine: '15M Turbo', multLabel: '50x' },
 ];

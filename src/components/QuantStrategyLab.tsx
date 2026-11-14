@@ -96,7 +96,7 @@ const BASKET_1H = [
   { code: 'cryBTCUSD', name: 'BTC/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'cryETHUSD', name: 'ETH/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'frxXAUUSD', name: 'Gold/USD', market: 'commodities', engine: '1h' as const },
-  { code: 'OTC_NDX', name: 'US Tech 100', market: 'indices', engine: '1h' as const },
+  { code: 'frxXAGUSD', name: 'Silver/USD', market: 'commodities', engine: '1h' as const },
 ];
 
 const BASKET_DUAL = [...BASKET_15M, ...BASKET_1H];
@@ -447,7 +447,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       });
     } else if (
       (selectedTimeframe === '15m' || selectedTimeframe === 'dual') &&
-      positions.filter((p) => !p.isSold).length < 3
+      positions.filter((p) => !p.isSold).length < 4
     ) {
       lastAutoActedBarTimeRef.current = barTime;
       void (async () => {
@@ -468,7 +468,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
                 ticks_history: item.code,
                 style: 'candles',
                 granularity: gran,
-                count: 150,
+                count: 350,
                 end: 'latest',
               },
               { expectedGeneration: connectionGeneration, timeoutMs: 6_000 },

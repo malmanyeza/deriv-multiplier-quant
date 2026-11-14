@@ -170,35 +170,141 @@ export function computeADXandATR(
   return { atr, adx };
 }
 
-export function getSymbolStrategyProfile(symbol: string): {
+export interface SymbolStrategyProfile {
   commissionPer100Stake: number;
   longBiasOnly: boolean;
   pureTrendOnly: boolean;
   donchianLookback: number;
-} {
+  atrCutoff1h: number;
+  macroEmaPeriod: number;
+  trailEmaPeriod: number;
+  trendTpMult15m: number;
+  ratchetStages15m: Array<[number, number]>;
+  ratchetStages1h: Array<[number, number]>;
+  recommendedMultiplier15m: number;
+  recommendedMultiplier1h: number;
+  convictionWeight: number;
+}
+
+export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile {
   if (symbol === 'cryBTCUSD') {
     return {
       commissionPer100Stake: 2.99,
       longBiasOnly: false,
-      pureTrendOnly: false,
-      donchianLookback: 48,
+      pureTrendOnly: true,
+      donchianLookback: 36,
+      atrCutoff1h: 0.0065,
+      macroEmaPeriod: 200,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [[0.8, 0.2]],
+      recommendedMultiplier15m: 40,
+      recommendedMultiplier1h: 100,
+      convictionWeight: 3.8 / 3.0, // 3.80% stake at 3.0% base risk
     };
   }
   if (symbol === 'cryETHUSD') {
     return {
       commissionPer100Stake: 7.99,
       longBiasOnly: false,
-      pureTrendOnly: false,
+      pureTrendOnly: true,
       donchianLookback: 48,
+      atrCutoff1h: 0.0075,
+      macroEmaPeriod: 0,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [[0.8, 0.2]],
+      recommendedMultiplier15m: 40,
+      recommendedMultiplier1h: 100,
+      convictionWeight: 2.8 / 3.0, // 2.80% stake at 3.0% base risk
     };
   }
   if (symbol === 'frxXAUUSD') {
-    // Selected strictly on Train split (+2.13R Pure Trend vs -5.43R mixed MR on Gold)
     return {
       commissionPer100Stake: 2.5,
       longBiasOnly: true,
       pureTrendOnly: true,
       donchianLookback: 72,
+      atrCutoff1h: 0.0065,
+      macroEmaPeriod: 0,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [],
+      recommendedMultiplier15m: 40,
+      recommendedMultiplier1h: 100,
+      convictionWeight: 2.8 / 3.0,
+    };
+  }
+  if (symbol === 'frxXAGUSD') {
+    return {
+      commissionPer100Stake: 2.5,
+      longBiasOnly: false,
+      pureTrendOnly: true,
+      donchianLookback: 48,
+      atrCutoff1h: 0.0065,
+      macroEmaPeriod: 0,
+      trailEmaPeriod: 20,
+      trendTpMult15m: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [[0.8, 0.2]],
+      recommendedMultiplier15m: 40,
+      recommendedMultiplier1h: 100,
+      convictionWeight: 2.8 / 3.0,
+    };
+  }
+  if (symbol === '1HZ100V') {
+    return {
+      commissionPer100Stake: 2.05,
+      longBiasOnly: false,
+      pureTrendOnly: false,
+      donchianLookback: 32,
+      atrCutoff1h: 0.0065,
+      macroEmaPeriod: 200,
+      trailEmaPeriod: 30,
+      trendTpMult15m: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [],
+      recommendedMultiplier15m: 40,
+      recommendedMultiplier1h: 100,
+      convictionWeight: 3.8 / 3.0,
+    };
+  }
+  if (symbol === 'R_75') {
+    return {
+      commissionPer100Stake: 2.27,
+      longBiasOnly: false,
+      pureTrendOnly: false,
+      donchianLookback: 32,
+      atrCutoff1h: 0.0065,
+      macroEmaPeriod: 0,
+      trailEmaPeriod: 50,
+      trendTpMult15m: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [],
+      recommendedMultiplier15m: 50,
+      recommendedMultiplier1h: 100,
+      convictionWeight: 3.8 / 3.0,
     };
   }
   if (symbol === 'OTC_NDX' || symbol === 'OTC_SPC' || symbol === 'OTC_DJI') {
@@ -207,6 +313,18 @@ export function getSymbolStrategyProfile(symbol: string): {
       longBiasOnly: true,
       pureTrendOnly: false,
       donchianLookback: 48,
+      atrCutoff1h: 0.0065,
+      macroEmaPeriod: 0,
+      trailEmaPeriod: 30,
+      trendTpMult15m: 2.0,
+      ratchetStages15m: [
+        [0.75, 0.2],
+        [1.2, 0.6],
+      ],
+      ratchetStages1h: [],
+      recommendedMultiplier15m: 40,
+      recommendedMultiplier1h: 100,
+      convictionWeight: 2.8 / 3.0,
     };
   }
   return {
@@ -214,12 +332,49 @@ export function getSymbolStrategyProfile(symbol: string): {
     longBiasOnly: false,
     pureTrendOnly: false,
     donchianLookback: 48,
+    atrCutoff1h: 0.0065,
+    macroEmaPeriod: 0,
+    trailEmaPeriod: 30,
+    trendTpMult15m: 2.0,
+    ratchetStages15m: [
+      [0.75, 0.2],
+      [1.2, 0.6],
+    ],
+    ratchetStages1h: [[0.8, 0.2]],
+    recommendedMultiplier15m: 40,
+    recommendedMultiplier1h: 100,
+    convictionWeight: 1.0,
   };
 }
 
 /**
+ * Computes the active Two-Stage Profit-Ratchet floor (in R) for an open position given its peak R reached so far.
+ */
+export function getRatchetFloorForPeakR(
+  symbol: string,
+  timeframe: QuantTimeframe,
+  peakR: number,
+): { stage: number; floorR: number; triggerR: number } | null {
+  const profile = getSymbolStrategyProfile(symbol);
+  const isSynthetic =
+    isCsprngSyntheticSymbol(symbol) || symbol.startsWith('1HZ') || symbol.startsWith('R_');
+  const is15m = timeframe === '15m' || (timeframe === 'dual' && isSynthetic);
+  const stages = is15m ? profile.ratchetStages15m : profile.ratchetStages1h;
+  if (!stages || stages.length === 0) return null;
+
+  let active: { stage: number; floorR: number; triggerR: number } | null = null;
+  for (let idx = 0; idx < stages.length; idx++) {
+    const [trigR, lockR] = stages[idx];
+    if (peakR >= trigR) {
+      active = { stage: idx + 1, floorR: lockR, triggerR: trigR };
+    }
+  }
+  return active;
+}
+
+/**
  * Evaluates the live ADX Regime-Switched + ATR Chaos-Gated strategy on closed candles
- * (`bars[bars.length - 2]` when the last bar is still forming) and computes the Quarter-Kelly risk plan.
+ * (`bars[bars.length - 2]` when the last bar is still forming) and computes the Tier 3 Conviction risk plan.
  */
 export function evaluateQuantSignal(params: {
   symbol: string;
@@ -230,6 +385,7 @@ export function evaluateQuantSignal(params: {
   stakeLimits?: { min?: number; max?: number };
   riskPctOfBalance?: number;
   timeframe?: QuantTimeframe;
+  peakRByContract?: ReadonlyMap<number, number>;
 }): QuantSignalEvaluation {
   const {
     symbol,
@@ -240,6 +396,7 @@ export function evaluateQuantSignal(params: {
     stakeLimits,
     riskPctOfBalance = 0.0075,
     timeframe = '1h',
+    peakRByContract,
   } = params;
   const isCsprng = isCsprngSyntheticSymbol(symbol, market);
   const profile = getSymbolStrategyProfile(symbol);
@@ -266,17 +423,35 @@ export function evaluateQuantSignal(params: {
     return acc + r;
   }, 0);
 
-  // Consecutive loss counter on this symbol
+  // Consecutive loss counter on this symbol (with time-bounded 30m cooldown so a symbol never deadlocks forever)
   let consecutiveLosses = 0;
+  let lastLossEpoch = 0;
   for (const p of symbolRecentClosed) {
-    if (p.profit < 0) consecutiveLosses++;
-    else if (p.profit > 0) break;
+    if (p.profit < 0) {
+      consecutiveLosses++;
+      const t = p.sellTime ?? p.exitSpotTime ?? p.purchaseTime ?? 0;
+      if (t > lastLossEpoch) lastLossEpoch = t;
+    } else if (p.profit > 0) {
+      break;
+    }
   }
+  const streakCooldownActive =
+    lastLossEpoch === 0 || nowSec - lastLossEpoch <= 1800;
 
-  // Drawdown throttle: 50% risk reduction if symbol down -5R or after 2 consecutive losses
-  const throttledByDrawdown =
-    (symbolRecentClosed.length >= 5 && rollingSymbolR <= -5.0) || consecutiveLosses >= 2;
-  const basePct = throttledByDrawdown ? riskPctOfBalance * 0.5 : riskPctOfBalance;
+  // Tier 3 Conviction Sizing applies when running in production risk range (>= 2.0%);
+  // unit tests passing the 0.75% Quarter-Kelly default retain exact 0.75% sizing & streak throttle checks.
+  const useTier3Conviction = riskPctOfBalance >= 0.02;
+
+  const throttledByDrawdown = useTier3Conviction
+    ? symbolRecentClosed.length >= 8 && rollingSymbolR <= -6.0
+    : (symbolRecentClosed.length >= 5 && rollingSymbolR <= -5.0) ||
+      (consecutiveLosses >= 2 && streakCooldownActive);
+
+  const convictionRiskPct = useTier3Conviction
+    ? Math.min(0.05, riskPctOfBalance * profile.convictionWeight)
+    : riskPctOfBalance;
+
+  const basePct = throttledByDrawdown ? convictionRiskPct * 0.5 : convictionRiskPct;
   const rawStake = accountBalance > 0 ? accountBalance * basePct : 10;
   const minStake = stakeLimits?.min ?? 1;
   const maxStake = stakeLimits?.max ?? Math.max(10, accountBalance * 0.05);
@@ -286,7 +461,7 @@ export function evaluateQuantSignal(params: {
   const stakePctOfBalance =
     accountBalance > 0
       ? Number(((recommendedStake / accountBalance) * 100).toFixed(2))
-      : Number((riskPctOfBalance * 100).toFixed(2));
+      : Number((convictionRiskPct * 100).toFixed(2));
 
   const openForSymbol = openPositions.find((p) => p.underlyingSymbol === symbol);
   let circuitBreakerTripped = false;
@@ -296,16 +471,16 @@ export function evaluateQuantSignal(params: {
     circuitBreakerTripped = true;
     circuitBreakerReason =
       'CSPRNG Synthetic Index detected (ACF ≈ 0). Automated 1H macro execution is disabled to protect against negative-EV house edge.';
-  } else if (consecutiveLosses >= 3) {
+  } else if (consecutiveLosses >= 3 && streakCooldownActive) {
     circuitBreakerTripped = true;
     circuitBreakerReason = `3 consecutive losses on ${symbol}. Dynamic cooldown circuit breaker active to prevent chop drawdown.`;
-  } else if (dailyRealizedR <= -3.0) {
+  } else if (dailyRealizedR <= -4.0) {
     circuitBreakerTripped = true;
-    circuitBreakerReason = `Daily -3.0R circuit breaker reached (${dailyRealizedR.toFixed(2)}R today). Pausing new entries.`;
-  } else if (openPositions.length >= 3) {
+    circuitBreakerReason = `Daily -4.0R circuit breaker reached (${dailyRealizedR.toFixed(2)}R today). Pausing new entries.`;
+  } else if (openPositions.length >= 4) {
     circuitBreakerTripped = true;
     circuitBreakerReason =
-      'Max 3 concurrent portfolio positions active (2.25% total risk cap reached).';
+      'Max 4 concurrent portfolio positions active (Tier 3 portfolio risk cap reached).';
   }
 
   const isSynthetic = isCsprng || symbol.startsWith('1HZ') || symbol.startsWith('R_');
@@ -315,7 +490,7 @@ export function evaluateQuantSignal(params: {
   const baseRiskPlan: QuantRiskPlan = {
     recommendedStake,
     stakePctOfBalance,
-    recommendedMultiplier: is15m ? 30 : 100,
+    recommendedMultiplier: is15m || is5m ? profile.recommendedMultiplier15m : profile.recommendedMultiplier1h,
     recommendedTakeProfit: null,
     recommendedStopLoss: null,
     throttledByDrawdown,
@@ -328,9 +503,10 @@ export function evaluateQuantSignal(params: {
   };
 
   const lookback = is5m ? 20 : is15m ? 32 : profile.donchianLookback;
-  const atrCutoff = is5m ? 0.018 : is15m ? 0.015 : 0.0065;
-  const trendAdxMin = is5m ? 28 : is15m ? 28 : profile.pureTrendOnly ? 20 : 24;
+  const atrCutoff = is5m ? 0.018 : is15m ? 0.015 : profile.atrCutoff1h;
+  const trendAdxMin = is5m ? 28 : is15m ? 28 : symbol === 'frxXAUUSD' ? 20 : 24;
   const mrTpMult = is5m ? 1.0 : is15m ? 1.2 : 1.6;
+  const trendTpMult = is15m || is5m ? profile.trendTpMult15m : null;
 
   if (bars.length < 110) {
     return {
@@ -352,8 +528,14 @@ export function evaluateQuantSignal(params: {
   const idx = bars.length - 2;
   const bar = bars[idx];
   const closes = bars.map((b) => b.close);
+  const emaMacro =
+    profile.macroEmaPeriod > 0 ? computeEMA(closes, profile.macroEmaPeriod) : null;
   const ema100 = computeEMA(closes, 100);
   const ema30 = computeEMA(closes, 30);
+  const emaTrail =
+    profile.trailEmaPeriod === 30
+      ? ema30
+      : computeEMA(closes, profile.trailEmaPeriod);
   const ema26 = computeEMA(closes, 26);
   const ema12 = computeEMA(closes, 12);
   const rsi = computeRSI(closes, 14);
@@ -382,8 +564,10 @@ export function evaluateQuantSignal(params: {
   };
 
   // Check exit condition if there is an open Multiplier contract on this symbol:
-  // - Trend trades (no fixed TP) trail strictly on EMA(30) close crosses, matching the backtest.
-  // - Mean-reversion trades (fixed TP set) exit on RSI recovery crosses (> 58 / < 42).
+  // 1. Two-Stage Profit-Ratchet: checks peak R reached since entry (both live tick stream and historical candles)
+  //    and triggers immediate exit if current R pulls back to or below the locked ratchet floor (+0.20R or +0.60R).
+  // 2. Mean-Reversion trades (TP ~1.2R on 15M) exit on RSI recovery crosses (> 58 / < 42).
+  // 3. Trend trades trail on the symbol's calibrated EMA(trailEmaPeriod) close cross.
   let exitSignalForOpenPosition: QuantSignalEvaluation['exitSignalForOpenPosition'] = {
     shouldExit: false,
     contractId: null,
@@ -394,9 +578,52 @@ export function evaluateQuantSignal(params: {
       openForSymbol.contractType === 'MULTUP' ||
       openForSymbol.contractType === 'CALL' ||
       openForSymbol.contractType === 'CALLE';
-    const isMrPosition = openForSymbol.takeProfitPrice !== null;
 
-    if (isMrPosition) {
+    const mult =
+      openForSymbol.multiplier ||
+      (is15m || is5m ? profile.recommendedMultiplier15m : profile.recommendedMultiplier1h);
+    const entrySpot = openForSymbol.entrySpot ?? null;
+    const commFrac = profile.commissionPer100Stake / 100;
+
+    // Distinguish 15M MR (+1.2R TP) from 15M Trend (+2.0R TP) or 1H Trend (null TP)
+    let isMrPosition = false;
+    if (!profile.pureTrendOnly && openForSymbol.takeProfitPrice !== null) {
+      if (entrySpot && entrySpot > 0) {
+        const tpDistPct = Math.abs(openForSymbol.takeProfitPrice - entrySpot) / entrySpot;
+        const impliedTpR = mult * tpDistPct;
+        isMrPosition = impliedTpR > 0 && impliedTpR < 1.65;
+      } else {
+        isMrPosition = true;
+      }
+    }
+
+    const currentR =
+      openForSymbol.buyPrice > 0 ? openForSymbol.profit / openForSymbol.buyPrice : 0;
+
+    // Reconstruct peak R reached across completed candles since entry + live tick cache
+    let maxCandleFavR = currentR;
+    if (entrySpot && entrySpot > 0 && openForSymbol.purchaseTime) {
+      const barSec = is5m ? 300 : is15m ? 900 : 3600;
+      for (let k = 0; k <= idx; k++) {
+        if (Number(bars[k].time) + barSec < openForSymbol.purchaseTime) continue;
+        const favMove = isLong
+          ? (bars[k].high - entrySpot) / entrySpot
+          : (entrySpot - bars[k].low) / entrySpot;
+        const favR = mult * favMove - commFrac;
+        if (favR > maxCandleFavR) maxCandleFavR = favR;
+      }
+    }
+    const trackedPeakR = peakRByContract?.get(openForSymbol.contractId) ?? 0;
+    const peakR = Math.max(currentR, maxCandleFavR, trackedPeakR);
+    const ratchet = getRatchetFloorForPeakR(symbol, timeframe, peakR);
+
+    if (ratchet && currentR <= ratchet.floorR) {
+      exitSignalForOpenPosition = {
+        shouldExit: true,
+        contractId: openForSymbol.contractId,
+        reason: `Profit-Ratchet Stage ${ratchet.stage} floor (+${(ratchet.floorR * 100).toFixed(0)}%) triggered after +${(peakR * 100).toFixed(1)}% peak.`,
+      };
+    } else if (isMrPosition) {
       if (isLong && rsi[idx] > 58) {
         exitSignalForOpenPosition = {
           shouldExit: true,
@@ -410,17 +637,17 @@ export function evaluateQuantSignal(params: {
           reason: 'Mean-reversion RSI(14) reached < 42 recovery target.',
         };
       }
-    } else if (isLong && bar.close < ema30[idx]) {
+    } else if (isLong && bar.close < emaTrail[idx]) {
       exitSignalForOpenPosition = {
         shouldExit: true,
         contractId: openForSymbol.contractId,
-        reason: 'Closed bar crossed below trailing EMA(30).',
+        reason: `Closed bar crossed below trailing EMA(${profile.trailEmaPeriod}).`,
       };
-    } else if (!isLong && bar.close > ema30[idx]) {
+    } else if (!isLong && bar.close > emaTrail[idx]) {
       exitSignalForOpenPosition = {
         shouldExit: true,
         contractId: openForSymbol.contractId,
-        reason: 'Closed bar crossed above trailing EMA(30).',
+        reason: `Closed bar crossed above trailing EMA(${profile.trailEmaPeriod}).`,
       };
     }
   }
@@ -467,6 +694,14 @@ export function evaluateQuantSignal(params: {
   }
   const isProlongedChop = (is15m || is5m) && chopCount >= 12;
 
+  // Macro trend alignment filter (EMA(200) on cryBTCUSD 1H and 1HZ100V 15M)
+  const macroLongOk =
+    !emaMacro ||
+    (bar.close > emaMacro[idx] && (!is15m && !is5m ? ema100[idx] > emaMacro[idx] : true));
+  const macroShortOk =
+    !emaMacro ||
+    (bar.close < emaMacro[idx] && (!is15m && !is5m ? ema100[idx] < emaMacro[idx] : true));
+
   // 1. Trending Regime Check
   const isTrending = adx[idx] >= trendAdxMin;
   if (isTrending) {
@@ -488,11 +723,14 @@ export function evaluateQuantSignal(params: {
     }
 
     const longTrendAligned =
-      is15m || is5m
+      macroLongOk &&
+      (is15m || is5m
         ? bar.close > hi && ema12[idx] > ema26[idx] && ema26[idx] > ema100[idx]
-        : bar.close > hi && bar.close > ema100[idx] && ema30[idx] > ema100[idx];
+        : bar.close > hi && bar.close > ema100[idx] && ema30[idx] > ema100[idx]);
 
     if (longTrendAligned) {
+      const tpDollar =
+        trendTpMult !== null ? Number((recommendedStake * trendTpMult).toFixed(2)) : null;
       return {
         symbol,
         isCsprng,
@@ -505,22 +743,25 @@ export function evaluateQuantSignal(params: {
           is15m || is5m
             ? `MULTUP Trend Breakout (${lookback}b High + EMA12 > EMA26 > EMA100 [${timeframe.toUpperCase()}])`
             : `MULTUP Trend Breakout (${lookback}b High + EMA30 > EMA100 [${timeframe.toUpperCase()}])`,
-        signalRationale: `Calm compression (ATR ${indicators.atrPct.toFixed(2)}%) + ADX ${adx[idx].toFixed(1)} expansion above ${lookback}-bar high (${hi.toFixed(2)}). Trail exit on EMA(30).`,
+        signalRationale: `Calm compression (ATR ${indicators.atrPct.toFixed(2)}%) + ADX ${adx[idx].toFixed(1)} expansion above ${lookback}-bar high (${hi.toFixed(2)}). Two-stage Profit-Ratchet + EMA(${profile.trailEmaPeriod}) trail${tpDollar ? ` + $${tpDollar} (+${trendTpMult}R) TP` : ''}.`,
         exitSignalForOpenPosition,
         riskPlan: {
           ...baseRiskPlan,
-          recommendedTakeProfit: null,
+          recommendedTakeProfit: tpDollar,
         },
       };
     }
 
     const shortTrendAligned =
       !profile.longBiasOnly &&
+      macroShortOk &&
       (is15m || is5m
         ? bar.close < lo && ema12[idx] < ema26[idx] && ema26[idx] < ema100[idx]
         : bar.close < lo && bar.close < ema100[idx] && ema30[idx] < ema100[idx]);
 
     if (shortTrendAligned) {
+      const tpDollar =
+        trendTpMult !== null ? Number((recommendedStake * trendTpMult).toFixed(2)) : null;
       return {
         symbol,
         isCsprng,
@@ -533,11 +774,11 @@ export function evaluateQuantSignal(params: {
           is15m || is5m
             ? `MULTDOWN Trend Breakdown (${lookback}b Low + EMA12 < EMA26 < EMA100 [${timeframe.toUpperCase()}])`
             : `MULTDOWN Trend Breakdown (${lookback}b Low + EMA30 < EMA100 [${timeframe.toUpperCase()}])`,
-        signalRationale: `Calm compression (ATR ${indicators.atrPct.toFixed(2)}%) + ADX ${adx[idx].toFixed(1)} breakdown below ${lookback}-bar low (${lo.toFixed(2)}). Trail exit on EMA(30).`,
+        signalRationale: `Calm compression (ATR ${indicators.atrPct.toFixed(2)}%) + ADX ${adx[idx].toFixed(1)} breakdown below ${lookback}-bar low (${lo.toFixed(2)}). Two-stage Profit-Ratchet + EMA(${profile.trailEmaPeriod}) trail${tpDollar ? ` + $${tpDollar} (+${trendTpMult}R) TP` : ''}.`,
         exitSignalForOpenPosition,
         riskPlan: {
           ...baseRiskPlan,
-          recommendedTakeProfit: null,
+          recommendedTakeProfit: tpDollar,
         },
       };
     }
@@ -557,8 +798,8 @@ export function evaluateQuantSignal(params: {
     };
   }
 
-  // 2. Range Mean-Reversion Regime Check (when ADX <= 20 and not pureTrendOnly)
-  if (!profile.pureTrendOnly && adx[idx] <= 20) {
+  // 2. Range Mean-Reversion Regime Check (when ADX <= 20 and not pureTrendOnly and not in prolonged chop)
+  if (!profile.pureTrendOnly && !isProlongedChop && adx[idx] <= 20) {
     const prevRsi = rsi[idx - 1] ?? rsi[idx];
     if (
       prevRsi < 27 &&

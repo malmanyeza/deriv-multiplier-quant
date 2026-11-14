@@ -29,6 +29,7 @@ export const QUANT_CORE_SYMBOLS = [
   'cryBTCUSD',
   'cryETHUSD',
   'frxXAUUSD',
+  'frxXAGUSD',
   'OTC_NDX',
   'OTC_SPC',
 ] as const;
