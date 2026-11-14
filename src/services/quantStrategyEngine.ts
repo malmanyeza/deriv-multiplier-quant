@@ -720,10 +720,10 @@ export function evaluateQuantSignal(params: {
   } else if (dailyRealizedR <= -4.0) {
     circuitBreakerTripped = true;
     circuitBreakerReason = `Daily -4.0R circuit breaker reached (${dailyRealizedR.toFixed(2)}R today). Pausing new entries.`;
-  } else if (openPositions.length >= 6) {
+  } else if (openPositions.length >= 8) {
     circuitBreakerTripped = true;
     circuitBreakerReason =
-      'Max 6 concurrent portfolio positions active (Portfolio E risk cap reached).';
+      'Max 8 concurrent portfolio positions active (Portfolio E risk cap reached).';
   }
 
   const isSynthetic = isCsprng || symbol.startsWith('1HZ') || symbol.startsWith('R_');

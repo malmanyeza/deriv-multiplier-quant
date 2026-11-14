@@ -856,7 +856,7 @@ export class QuantServerRunner {
               ev.signalDirection &&
               !ev.riskPlan.circuitBreakerTripped &&
               !alreadyOpenOnSymbol &&
-              openTotal < 6
+              openTotal < 8
             ) {
               const chosenMultiplier = pickClosestMultiplier(
                 rule.multiplierRange,

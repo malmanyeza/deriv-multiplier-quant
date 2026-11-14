@@ -456,7 +456,7 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
       });
     } else if (
       (selectedTimeframe === '15m' || selectedTimeframe === 'dual') &&
-      positions.filter((p) => !p.isSold).length < 6
+      positions.filter((p) => !p.isSold).length < 8
     ) {
       lastAutoActedBarTimeRef.current = barTime;
       void (async () => {
