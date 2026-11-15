@@ -778,9 +778,22 @@ export class QuantServerRunner {
 
       const positions = await this.fetchPositionsSnapshot();
 
-      // Always check live Profit-Ratchet on open positions every 15s (even between candle closes)
+      // Always check live Profit-Ratchet via proposal_open_contract (portfolio: 1 omits live profit)
       for (const openPos of positions.filter((p) => !p.isSold)) {
-        await this.checkAndExecuteProfitRatchet(openPos);
+        try {
+          const pocRes = await this.request<{ proposal_open_contract?: ProposalOpenContractWire }>(
+            { proposal_open_contract: 1, contract_id: openPos.contractId },
+            8_000,
+          );
+          if (pocRes.proposal_open_contract) {
+            const liveNorm = normalizeOpenContract(pocRes.proposal_open_contract);
+            if (liveNorm && !liveNorm.isSold) {
+              await this.checkAndExecuteProfitRatchet(liveNorm);
+            }
+          }
+        } catch {
+          // Ignore transient POC lookup error; live stream still monitors it
+        }
       }
 
       for (const group of enginesToCheck) {
