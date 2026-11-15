@@ -112,6 +112,8 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   const stopLossPriceLineRef = useRef<IPriceLine | null>(null);
   const stopOutPriceLineRef = useRef<IPriceLine | null>(null);
   const takeProfitPriceLineRef = useRef<IPriceLine | null>(null);
+  const ratchetPriceLinesRef = useRef<IPriceLine[]>([]);
+  const peakRByContractRef = useRef<Map<number, number>>(new Map());
   const hoverEntryLineRef = useRef<IPriceLine | null>(null);
   const hoverTpLineRef = useRef<IPriceLine | null>(null);
   const hoverLossLineRef = useRef<IPriceLine | null>(null);
@@ -140,6 +142,17 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   const [totalLoadedBars, setTotalLoadedBars] = useState<number>(0);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [seriesTickVersion, setSeriesTickVersion] = useState<number>(0);
+  const [hiddenLineKeys, setHiddenLineKeys] = useState<Set<string>>(() => new Set());
+  const [tradeCardHidden, setTradeCardHidden] = useState<boolean>(false);
+
+  const toggleLineVisibility = (key: string) => {
+    setHiddenLineKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   // Sync default decimals whenever symbol metadata changes
   useEffect(() => {
@@ -210,6 +223,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       stopLossPriceLineRef.current = null;
       stopOutPriceLineRef.current = null;
       takeProfitPriceLineRef.current = null;
+      ratchetPriceLinesRef.current = [];
       mainSeriesRef.current = null;
       futureWhitespaceSeriesRef.current = null;
       chartRef.current = null;
@@ -240,6 +254,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     stopLossPriceLineRef.current = null;
     stopOutPriceLineRef.current = null;
     takeProfitPriceLineRef.current = null;
+    ratchetPriceLinesRef.current = [];
     hoverEntryLineRef.current = null;
     hoverTpLineRef.current = null;
     hoverLossLineRef.current = null;
@@ -613,12 +628,23 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     const markersPlugin = markersPluginRef.current;
     if (!mainSeries || !futureSeries || !markersPlugin) return;
 
+    for (const p of positions) {
+      if (!p.isSold && p.buyPrice > 0) {
+        const r = p.profit / p.buyPrice;
+        const prev = peakRByContractRef.current.get(p.contractId);
+        if (prev === undefined || r > prev) {
+          peakRByContractRef.current.set(p.contractId, r);
+        }
+      }
+    }
+
     const overlays = deriveRiseFallChartOverlays(
       positions,
       symbol,
       granularity,
       lastSeriesTimeRef.current,
       selectedContractId,
+      peakRByContractRef.current,
     );
 
     if (entryPriceLineRef.current) {
@@ -637,19 +663,23 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       mainSeries.removePriceLine(takeProfitPriceLineRef.current);
       takeProfitPriceLineRef.current = null;
     }
+    for (const line of ratchetPriceLinesRef.current) {
+      mainSeries.removePriceLine(line);
+    }
+    ratchetPriceLinesRef.current = [];
 
-    if (overlays.entryPriceLine) {
+    if (overlays.entryPriceLine && !hiddenLineKeys.has('entry')) {
       entryPriceLineRef.current = mainSeries.createPriceLine({
         price: overlays.entryPriceLine.price,
         color: overlays.entryPriceLine.color,
         lineWidth: 2,
-        lineStyle: LineStyle.Dashed,
+        lineStyle: LineStyle.Solid,
         axisLabelVisible: true,
         title: overlays.entryPriceLine.title,
       });
     }
 
-    if (overlays.takeProfitPriceLine) {
+    if (overlays.takeProfitPriceLine && !hiddenLineKeys.has('tp')) {
       takeProfitPriceLineRef.current = mainSeries.createPriceLine({
         price: overlays.takeProfitPriceLine.price,
         color: overlays.takeProfitPriceLine.color,
@@ -660,7 +690,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       });
     }
 
-    if (overlays.stopLossPriceLine) {
+    if (overlays.stopLossPriceLine && !hiddenLineKeys.has('sl')) {
       stopLossPriceLineRef.current = mainSeries.createPriceLine({
         price: overlays.stopLossPriceLine.price,
         color: overlays.stopLossPriceLine.color,
@@ -671,7 +701,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       });
     }
 
-    if (overlays.stopOutPriceLine) {
+    if (overlays.stopOutPriceLine && !hiddenLineKeys.has('ko')) {
       stopOutPriceLineRef.current = mainSeries.createPriceLine({
         price: overlays.stopOutPriceLine.price,
         color: overlays.stopOutPriceLine.color,
@@ -681,14 +711,40 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         title: overlays.stopOutPriceLine.title,
       });
     }
+    for (const spec of overlays.ratchetLines ?? []) {
+      if (hiddenLineKeys.has(spec.key)) continue;
+      const line = mainSeries.createPriceLine({
+        price: spec.price,
+        color: spec.color,
+        lineWidth: spec.kind === 'arm' ? 2 : 1,
+        lineStyle:
+          spec.kind === 'arm'
+            ? LineStyle.Dashed
+            : spec.active
+              ? LineStyle.Solid
+              : LineStyle.Dotted,
+        axisLabelVisible: true,
+        title: spec.title,
+      });
+      ratchetPriceLinesRef.current.push(line);
+    }
 
-    // Auto-scale Y-axis so active TP / SL (or KO when no SL) are visible when viewing the trade
+    // Auto-scale Y-axis so active visible TP / SL (or KO when no SL) are in view
     const scaleTargets: number[] = [];
-    if (overlays.entryPriceLine) scaleTargets.push(overlays.entryPriceLine.price);
-    if (overlays.takeProfitPriceLine) scaleTargets.push(overlays.takeProfitPriceLine.price);
-    if (overlays.stopLossPriceLine) {
+    if (overlays.entryPriceLine && !hiddenLineKeys.has('entry')) {
+      scaleTargets.push(overlays.entryPriceLine.price);
+    }
+    if (overlays.takeProfitPriceLine && !hiddenLineKeys.has('tp')) {
+      scaleTargets.push(overlays.takeProfitPriceLine.price);
+    }
+    for (const spec of overlays.ratchetLines ?? []) {
+      if (!hiddenLineKeys.has(spec.key)) {
+        scaleTargets.push(spec.price);
+      }
+    }
+    if (overlays.stopLossPriceLine && !hiddenLineKeys.has('sl')) {
       scaleTargets.push(overlays.stopLossPriceLine.price);
-    } else if (overlays.stopOutPriceLine) {
+    } else if (overlays.stopOutPriceLine && !hiddenLineKeys.has('ko')) {
       scaleTargets.push(overlays.stopOutPriceLine.price);
     }
     positionAutoscaleRangeRef.current =
@@ -698,6 +754,18 @@ export const PriceChart: React.FC<PriceChartProps> = ({
             max: Math.max(...scaleTargets),
           }
         : null;
+
+    const activeOpenTrade =
+      overlays.focusPosition && !overlays.focusPosition.isSold
+        ? overlays.focusPosition
+        : null;
+    mainSeries.applyOptions({
+      priceLineColor: activeOpenTrade
+        ? activeOpenTrade.profit >= 0
+          ? '#10b981'
+          : '#f43f5e'
+        : '',
+    });
 
     if (!hoverPreviewActiveRef.current) {
       mainSeries.applyOptions({
@@ -712,7 +780,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
 
     markersPlugin.setMarkers(overlays.markers);
     futureSeries.setData(overlays.whitespaceFuturePoints);
-  }, [positions, symbol, granularity, seriesTickVersion, selectedContractId]);
+  }, [positions, symbol, granularity, seriesTickVersion, selectedContractId, hiddenLineKeys]);
 
   // Draw live Hover Preview Price Lines (Entry, Take Profit Point, Loss / Stop-Out Point)
   // when user hovers over Buy MULTUP or Sell MULTDOWN buttons
@@ -800,6 +868,61 @@ export const PriceChart: React.FC<PriceChartProps> = ({
           day: 'numeric',
         })
       : null;
+
+  const showFocusedTrade =
+    !hoverPreview &&
+    Boolean(focusedPosition) &&
+    (!focusedPosition!.isSold || focusedPosition!.contractId === selectedContractId);
+
+  const focusedOverlays = showFocusedTrade
+    ? deriveRiseFallChartOverlays(
+        positions,
+        symbol,
+        granularity,
+        null,
+        selectedContractId,
+        peakRByContractRef.current,
+      )
+    : null;
+
+  const lineToggleButtons: Array<{ key: string; label: string; color: string }> = [];
+  if (focusedOverlays) {
+    if (focusedOverlays.entryPriceLine) {
+      lineToggleButtons.push({
+        key: 'entry',
+        label: 'Entry',
+        color: focusedOverlays.entryPriceLine.color,
+      });
+    }
+    if (focusedOverlays.takeProfitPriceLine) {
+      lineToggleButtons.push({
+        key: 'tp',
+        label: 'TP',
+        color: focusedOverlays.takeProfitPriceLine.color,
+      });
+    }
+    if (focusedOverlays.stopLossPriceLine) {
+      lineToggleButtons.push({
+        key: 'sl',
+        label: 'SL',
+        color: focusedOverlays.stopLossPriceLine.color,
+      });
+    }
+    if (focusedOverlays.stopOutPriceLine) {
+      lineToggleButtons.push({
+        key: 'ko',
+        label: 'KO (-100%)',
+        color: focusedOverlays.stopOutPriceLine.color,
+      });
+    }
+    for (const item of focusedOverlays.ratchetLines ?? []) {
+      lineToggleButtons.push({
+        key: item.key,
+        label: item.title,
+        color: item.color,
+      });
+    }
+  }
 
   return (
     <section className="panel chart-panel" aria-label="Live Price Chart">
@@ -890,12 +1013,117 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         </div>
       </div>
 
+      {showFocusedTrade && lineToggleButtons.length > 0 && (
+        <div
+          className="chart-line-toggles"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '8px 12px',
+            marginBottom: '8px',
+            borderRadius: '8px',
+            backgroundColor: 'rgba(15, 23, 42, 0.72)',
+            border: '1px solid rgba(148, 163, 184, 0.18)',
+          }}
+          role="group"
+          aria-label="Toggle chart trade lines"
+        >
+          <span
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              color: '#94a3b8',
+              marginRight: '4px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            Chart Lines:
+          </span>
+          {lineToggleButtons.map((btn) => {
+            const isHidden = hiddenLineKeys.has(btn.key);
+            return (
+              <button
+                key={btn.key}
+                type="button"
+                onClick={() => toggleLineVisibility(btn.key)}
+                aria-pressed={!isHidden}
+                title={
+                  isHidden
+                    ? `Show ${btn.label} line on chart`
+                    : `Hide ${btn.label} line from chart`
+                }
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '3px 9px',
+                  borderRadius: '999px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: isHidden
+                    ? '1px dashed rgba(148, 163, 184, 0.35)'
+                    : `1px solid ${btn.color}`,
+                  backgroundColor: isHidden
+                    ? 'rgba(15, 23, 42, 0.4)'
+                    : 'rgba(15, 23, 42, 0.92)',
+                  color: isHidden ? '#64748b' : '#f1f5f9',
+                  textDecoration: isHidden ? 'line-through' : 'none',
+                  opacity: isHidden ? 0.7 : 1,
+                }}
+              >
+                <span
+                  style={{
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    backgroundColor: btn.color,
+                    opacity: isHidden ? 0.35 : 1,
+                  }}
+                />
+                <span>{btn.label}</span>
+                <span style={{ opacity: 0.8, fontSize: '11px' }}>
+                  {isHidden ? '+' : '×'}
+                </span>
+              </button>
+            );
+          })}
+          {hiddenLineKeys.size > 0 && (
+            <button
+              type="button"
+              className="btn btn-outline btn-xs"
+              onClick={() => setHiddenLineKeys(new Set())}
+              style={{ marginLeft: 'auto', fontSize: '11px' }}
+            >
+              Show All
+            </button>
+          )}
+          {tradeCardHidden && (
+            <button
+              type="button"
+              className="btn btn-outline btn-xs"
+              onClick={() => setTradeCardHidden(false)}
+              style={{
+                marginLeft: hiddenLineKeys.size > 0 ? '4px' : 'auto',
+                fontSize: '11px',
+              }}
+            >
+              Show Trade Card
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="chart-stage">
         <div ref={containerRef} className="chart-canvas" />
 
-        {!hoverPreview &&
+        {showFocusedTrade &&
           focusedPosition &&
-          (!focusedPosition.isSold || focusedPosition.contractId === selectedContractId) && (() => {
+          !tradeCardHidden &&
+          (() => {
             const isUp =
               focusedPosition.contractType === 'CALL' ||
               focusedPosition.contractType === 'CALLE' ||
@@ -904,29 +1132,51 @@ export const PriceChart: React.FC<PriceChartProps> = ({
               focusedPosition.contractType === 'MULTUP' ||
               focusedPosition.contractType === 'MULTDOWN';
             const sign = focusedPosition.profit >= 0 ? '+' : '';
+            const ratchetItems = focusedOverlays?.ratchetLines ?? [];
+
             return (
               <div
                 className="chart-hover-preview-card chart-active-trade-card tabular"
                 role="status"
                 aria-label="Focused trade levels"
+                style={{ pointerEvents: 'auto', zIndex: 20 }}
               >
-                <div className="hover-preview-title">
-                  <span className={`dir-badge ${isUp ? 'dir-rise' : 'dir-fall'}`}>
-                    {focusedPosition.contractType}
-                    {focusedPosition.multiplier ? ` ${focusedPosition.multiplier}x` : ''}
-                  </span>
-                  <strong>#{focusedPosition.contractId}</strong>
-                  <span
-                    className={`active-trade-pnl ${
-                      focusedPosition.profit >= 0 ? 'pnl-pos' : 'pnl-neg'
-                    }`}
-                  >
-                    {sign}
-                    {focusedPosition.profit.toFixed(2)} {focusedPosition.currency} (
-                    {sign}
-                    {focusedPosition.profitPercentage.toFixed(1)}%)
-                  </span>
-                </div>
+                    <div className="hover-preview-title">
+                      <span className={`dir-badge ${isUp ? 'dir-rise' : 'dir-fall'}`}>
+                        {focusedPosition.contractType}
+                        {focusedPosition.multiplier ? ` ${focusedPosition.multiplier}x` : ''}
+                      </span>
+                      <strong>#{focusedPosition.contractId}</strong>
+                      <span
+                        className={`active-trade-pnl ${
+                          focusedPosition.profit >= 0 ? 'pnl-pos' : 'pnl-neg'
+                        }`}
+                      >
+                        {sign}
+                        {focusedPosition.profit.toFixed(2)} {focusedPosition.currency} (
+                        {sign}
+                        {focusedPosition.profitPercentage.toFixed(1)}%)
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Close trade levels card"
+                        title="Close card"
+                        onClick={() => setTradeCardHidden(true)}
+                        style={{
+                          marginLeft: 'auto',
+                          background: 'transparent',
+                          border: '1px solid rgba(148, 163, 184, 0.28)',
+                          borderRadius: '6px',
+                          color: '#94a3b8',
+                          cursor: 'pointer',
+                          padding: '1px 7px',
+                          fontSize: '12px',
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
                 <div className="hover-preview-levels">
                   <div className="hover-level-item level-tp">
                     <span>▲ Take Profit (TP)</span>
@@ -962,6 +1212,21 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                             : '-1R Floor'}
                         </strong>
                       </div>
+                      {ratchetItems.map((item) => (
+                        <div
+                          key={item.key}
+                          className="hover-level-item"
+                          style={{
+                            borderColor: item.color,
+                            backgroundColor: 'rgba(15, 23, 42, 0.55)',
+                          }}
+                        >
+                          <span style={{ color: item.color }}>
+                            {item.kind === 'arm' ? '◆' : '▬'} {item.title}
+                          </span>
+                          <strong>{item.price.toFixed(decimals)}</strong>
+                        </div>
+                      ))}
                     </>
                   )}
                 </div>

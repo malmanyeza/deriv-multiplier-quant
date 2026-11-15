@@ -1,5 +1,9 @@
 import type { UTCTimestamp, SeriesMarker } from 'lightweight-charts';
 import type { ChartGranularity, NormalizedPosition } from '../types/deriv';
+import {
+  getRatchetFloorForPeakR,
+  getSymbolStrategyProfile,
+} from './quantStrategyEngine';
 
 export interface TickPoint {
   time: UTCTimestamp;
@@ -220,12 +224,19 @@ export interface DerivedPriceLineSpec {
   color: string;
 }
 
+export interface DerivedRatchetLineSpec extends DerivedPriceLineSpec {
+  key: string;
+  kind: 'arm' | 'floor';
+  active: boolean;
+}
+
 export interface DerivedRiseFallOverlays {
   focusPosition: NormalizedPosition | null;
   entryPriceLine: DerivedPriceLineSpec | null;
   stopLossPriceLine?: DerivedPriceLineSpec | null;
   stopOutPriceLine?: DerivedPriceLineSpec | null;
   takeProfitPriceLine?: DerivedPriceLineSpec | null;
+  ratchetLines?: DerivedRatchetLineSpec[];
   markers: SeriesMarker<UTCTimestamp>[];
   whitespaceFuturePoints: WhitespaceFuturePoint[];
 }
@@ -270,6 +281,7 @@ export function deriveRiseFallChartOverlays(
   granularity: ChartGranularity,
   latestSeriesTime: number | null,
   selectedContractId: number | null = null,
+  peakRByContract?: ReadonlyMap<number, number>,
 ): DerivedRiseFallOverlays {
   const symbolPositions = positions.filter((p) => p.underlyingSymbol === chartSymbol);
   const focus = pickChartFocusPosition(symbolPositions, chartSymbol, selectedContractId);
@@ -280,6 +292,7 @@ export function deriveRiseFallChartOverlays(
       stopLossPriceLine: null,
       stopOutPriceLine: null,
       takeProfitPriceLine: null,
+      ratchetLines: [],
       markers: [],
       whitespaceFuturePoints: [],
     };
@@ -312,7 +325,7 @@ export function deriveRiseFallChartOverlays(
     showLevels && focus.takeProfitPrice !== null
       ? {
           price: focus.takeProfitPrice,
-          title: 'TP (Take Profit)',
+          title: 'TP',
           color: '#10b981',
         }
       : null;
@@ -321,7 +334,7 @@ export function deriveRiseFallChartOverlays(
     showLevels && focus.stopLossPrice !== null
       ? {
           price: focus.stopLossPrice,
-          title: 'SL (Stop Loss)',
+          title: 'SL',
           color: '#f43f5e',
         }
       : null;
@@ -330,10 +343,86 @@ export function deriveRiseFallChartOverlays(
     showLevels && focus.stopOutPrice !== null
       ? {
           price: focus.stopOutPrice,
-          title: 'KO (Stop-Out)',
+          title: 'KO (-100%)',
           color: '#f59e0b',
         }
       : null;
+
+  const ratchetLines: DerivedRatchetLineSpec[] = [];
+  if (
+    showLevels &&
+    isMult &&
+    focus.entrySpot !== null &&
+    focus.multiplier !== null &&
+    focus.multiplier > 0 &&
+    focus.buyPrice > 0
+  ) {
+    const profile = getSymbolStrategyProfile(focus.underlyingSymbol);
+    const currentR = focus.profit / focus.buyPrice;
+    const peakR = Math.max(
+      currentR,
+      peakRByContract?.get(focus.contractId) ?? currentR,
+    );
+    const activeRatchet = getRatchetFloorForPeakR(
+      focus.underlyingSymbol,
+      'dual',
+      peakR,
+    );
+    const isSynthetic =
+      focus.underlyingSymbol.startsWith('1HZ') ||
+      focus.underlyingSymbol.startsWith('R_') ||
+      focus.underlyingSymbol.startsWith('CRY');
+    const stages = isSynthetic ? profile.ratchetStages15m : profile.ratchetStages1h;
+    const commFrac = profile.commissionPer100Stake / 100;
+    const priceAtR = (rTarget: number) => {
+      const moveFrac = (rTarget + commFrac) / focus.multiplier!;
+      return isRise
+        ? focus.entrySpot! * (1 + moveFrac)
+        : focus.entrySpot! * (1 - moveFrac);
+    };
+
+    const stagePalette = [
+      { arm: '#fde047', armed: 'rgba(253, 224, 71, 0.45)', floor: '#eab308', floorPending: 'rgba(234, 179, 8, 0.8)' },
+      { arm: '#f0abfc', armed: 'rgba(240, 171, 252, 0.45)', floor: '#d946ef', floorPending: 'rgba(217, 70, 239, 0.8)' },
+      { arm: '#fb923c', armed: 'rgba(251, 146, 60, 0.45)', floor: '#f97316', floorPending: 'rgba(249, 115, 22, 0.8)' },
+      { arm: '#f8fafc', armed: 'rgba(248, 250, 252, 0.45)', floor: '#e2e8f0', floorPending: 'rgba(226, 232, 240, 0.8)' },
+    ];
+
+    for (let idx = 0; idx < stages.length; idx++) {
+      const [triggerR, floorR] = stages[idx];
+      const trigPct = Math.round(triggerR * 100);
+      const floorPct = Math.round(floorR * 100);
+      const isStageActive = activeRatchet?.stage === idx + 1;
+      const isStageReached = peakR >= triggerR;
+      const palette = stagePalette[idx % stagePalette.length];
+
+      const armPrice = priceAtR(triggerR);
+      if (Number.isFinite(armPrice) && armPrice > 0) {
+        ratchetLines.push({
+          key: `ratchet-arm-${idx + 1}`,
+          price: armPrice,
+          title: isStageReached ? `TP +${trigPct}% ✓` : `TP +${trigPct}%`,
+          color: isStageReached ? palette.armed : palette.arm,
+          kind: 'arm',
+          active: false,
+        });
+      }
+
+      const floorPrice = priceAtR(floorR);
+      if (Number.isFinite(floorPrice) && floorPrice > 0) {
+        ratchetLines.push({
+          key: `ratchet-floor-${idx + 1}`,
+          price: floorPrice,
+          title: isStageActive
+            ? `Floor +${floorPct}% ●`
+            : `Floor +${floorPct}%`,
+          color: isStageActive ? palette.floor : palette.floorPending,
+          kind: 'floor',
+          active: isStageActive,
+        });
+      }
+    }
+  }
 
   const markers: SeriesMarker<UTCTimestamp>[] = [];
 
@@ -429,6 +518,7 @@ export function deriveRiseFallChartOverlays(
     stopLossPriceLine,
     stopOutPriceLine,
     takeProfitPriceLine,
+    ratchetLines,
     markers,
     whitespaceFuturePoints,
   };
