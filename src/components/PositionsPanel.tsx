@@ -48,8 +48,18 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
 }) => {
   const [tab, setTab] = useState<'open' | 'closed'>('open');
 
-  const openPositions = positions.filter((p) => !p.isSold);
-  const closedPositions = positions.filter((p) => p.isSold);
+  const openPositions = positions
+    .filter((p) => !p.isSold)
+    .sort((a, b) => b.purchaseTime - a.purchaseTime);
+
+  const closedPositions = positions
+    .filter((p) => p.isSold)
+    .sort((a, b) => {
+      const timeA = a.sellTime ?? a.exitSpotTime ?? a.dateExpiry ?? a.purchaseTime;
+      const timeB = b.sellTime ?? b.exitSpotTime ?? b.dateExpiry ?? b.purchaseTime;
+      return timeB - timeA;
+    });
+
   const activeList = tab === 'open' ? openPositions : closedPositions;
 
   return (
