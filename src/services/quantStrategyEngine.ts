@@ -805,11 +805,23 @@ export function evaluateQuantSignal(params: {
     const peakR = Math.max(currentR, maxCandleFavR, trackedPeakR);
     const ratchet = getRatchetFloorForPeakR(symbol, timeframe, peakR);
 
+    const effectiveTf15m = timeframe === '15m' || (timeframe === 'dual' && isSynthetic);
+    const maxHoldBars = isMrPosition ? (effectiveTf15m ? 32 : 24) : (effectiveTf15m ? 96 : 72);
+    const maxHoldSec = maxHoldBars * (effectiveTf15m ? 900 : 3600);
+    const currentEpoch = bar?.time ? Number(bar.time) : nowSec;
+    const holdSec = openForSymbol.purchaseTime > 0 ? currentEpoch - openForSymbol.purchaseTime : 0;
+
     if (ratchet && currentR <= ratchet.floorR) {
       exitSignalForOpenPosition = {
         shouldExit: true,
         contractId: openForSymbol.contractId,
         reason: `Profit-Ratchet Stage ${ratchet.stage} floor (+${(ratchet.floorR * 100).toFixed(0)}%) triggered after +${(peakR * 100).toFixed(1)}% peak.`,
+      };
+    } else if (holdSec >= maxHoldSec) {
+      exitSignalForOpenPosition = {
+        shouldExit: true,
+        contractId: openForSymbol.contractId,
+        reason: `Max hold duration reached (${Math.round(holdSec / 3600)}h). TIME auto-exit triggered.`,
       };
     } else if (isMrPosition) {
       if (isLong && rsi[idx] > 58) {
