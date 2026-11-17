@@ -580,6 +580,77 @@ export function useTradeLifecycle(args: UseTradeLifecycleArgs) {
         // Non-fatal if profit_table snapshot fails transiently
       });
 
+    // 1c. Hydrate full closed trade history from persistent database audit
+    void fetch('/api/quant/trades?limit=50', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { trades?: Array<{
+        contract_id: number;
+        symbol: string;
+        direction: string;
+        multiplier?: number;
+        stake: number;
+        currency?: string;
+        entry_price: number | null;
+        exit_price: number | null;
+        entry_time: string;
+        profit_loss: number | null;
+        status: string;
+        created_at: string;
+      }> } | null) => {
+        if (cancelled || !data || !Array.isArray(data.trades)) return;
+        for (const t of data.trades) {
+          if (t.status === 'open') continue;
+          const purchaseEpoch = t.entry_time
+            ? Math.floor(new Date(t.entry_time).getTime() / 1000)
+            : 0;
+          const sellEpoch = t.created_at
+            ? Math.floor(new Date(t.created_at).getTime() / 1000)
+            : null;
+          const profit = typeof t.profit_loss === 'number' ? t.profit_loss : 0;
+          const profitPercentage = t.stake > 0 ? (profit / t.stake) * 100 : 0;
+          const norm: NormalizedPosition = {
+            contractId: t.contract_id,
+            contractType: t.direction === 'rise' ? 'MULTUP' : 'MULTDOWN',
+            underlyingSymbol: t.symbol,
+            currency: t.currency ?? 'USD',
+            longcode: '',
+            shortcode: '',
+            buyPrice: t.stake,
+            bidPrice: t.stake + profit,
+            payout: t.stake + profit,
+            profit,
+            profitPercentage,
+            multiplier: t.multiplier ?? null,
+            stopOutPrice: null,
+            takeProfitPrice: null,
+            stopLossPrice: null,
+            purchaseTime: purchaseEpoch,
+            dateStart: purchaseEpoch,
+            dateExpiry: sellEpoch,
+            entrySpot: t.entry_price,
+            entrySpotTime: purchaseEpoch,
+            currentSpot: t.exit_price,
+            currentSpotTime: sellEpoch,
+            exitSpot: t.exit_price,
+            exitSpotTime: sellEpoch,
+            sellPrice: t.stake + profit,
+            sellTime: sellEpoch,
+            tickCount: null,
+            ticksObserved: 0,
+            isSold: true,
+            isExpired: true,
+            isValidToSell: false,
+            status: t.status === 'won' || profit >= 0 ? 'won' : 'lost',
+            buyTransactionId: null,
+            sellTransactionId: null,
+          };
+          upsertPosition(norm);
+        }
+      })
+      .catch(() => {
+        // Non-fatal
+      });
+
     // 2. Live all-open-contracts stream (`proposal_open_contract: 1, subscribe: 1`)
     const pocSub = socket.subscribe(
       { proposal_open_contract: 1 },
