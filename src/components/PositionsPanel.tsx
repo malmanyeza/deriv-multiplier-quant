@@ -2,6 +2,33 @@ import React, { useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, Layers } from 'lucide-react';
 import type { NormalizedPosition } from '../types/deriv';
 
+function formatEpoch(epochSec: number | null | undefined): string {
+  if (!epochSec || epochSec <= 0) return '—';
+  const d = new Date(epochSec * 1000);
+  return (
+    d.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    }) +
+    ', ' +
+    d.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  );
+}
+
+function formatDuration(startSec: number, endSec?: number | null): string {
+  if (!startSec || startSec <= 0) return '';
+  const finish = endSec && endSec > 0 ? endSec : Math.floor(Date.now() / 1000);
+  const totalSec = Math.max(0, finish - startSec);
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  if (hrs > 0) return `${hrs}h ${mins}m`;
+  return `${mins}m`;
+}
+
 interface PositionsPanelProps {
   authenticated: boolean;
   positions: NormalizedPosition[];
@@ -73,6 +100,7 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
               <tr>
                 <th>Symbol</th>
                 <th>Contract</th>
+                <th>Time &amp; Date</th>
                 <th>Entry / Spot</th>
                 <th>SL / TP / Expiry</th>
                 <th>Buy Price</th>
@@ -124,6 +152,16 @@ export const PositionsPanel: React.FC<PositionsPanelProps> = ({
                         {pos.contractType}
                         {pos.multiplier ? ` ${pos.multiplier}x` : ''}
                       </span>
+                    </td>
+                    <td>
+                      <div className="spot-pair">
+                        <span>{pos.isSold ? `In: ${formatEpoch(pos.purchaseTime)}` : `Open: ${formatEpoch(pos.purchaseTime)}`}</span>
+                        <span className="muted-note">
+                          {pos.isSold
+                            ? `Out: ${formatEpoch(pos.sellTime ?? pos.exitSpotTime)} (${formatDuration(pos.purchaseTime, pos.sellTime ?? pos.exitSpotTime)})`
+                            : `${formatDuration(pos.purchaseTime)} running`}
+                        </span>
+                      </div>
                     </td>
                     <td>
                       <div className="spot-pair">

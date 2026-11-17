@@ -199,7 +199,7 @@ export async function fetchOptionsAccounts(
       res = await fetch(url, {
         method: 'GET',
         headers,
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(20_000),
       });
     } catch {
       if (attempt < maxAttempts) {
@@ -290,7 +290,7 @@ export async function issueAccountOtpSocketUrl(
     res = await fetch(endpointUrl, {
       method: 'POST',
       headers,
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(20_000),
     });
   } catch {
     throw new DerivUpstreamError(
@@ -344,7 +344,7 @@ export async function resetDemoAccountBalance(
     res = await fetch(endpointUrl, {
       method: 'POST',
       headers,
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(20_000),
     });
   } catch {
     throw new DerivUpstreamError(
@@ -363,4 +363,75 @@ export async function resetDemoAccountBalance(
     }
     throw classifyHttpFailure(res.status, body);
   }
+}
+
+export interface MarkupStatisticsBreakdown {
+  app_id: string;
+  app_markup_usd: number;
+  volume_usd: number;
+  payout_usd: number;
+  contract_count: number;
+  client_count: number;
+}
+
+export interface MarkupStatisticsResult {
+  total_app_markup_usd: number;
+  total_volume_usd: number;
+  total_payout_usd: number;
+  total_contract_count: number;
+  total_client_count: number;
+  breakdown: MarkupStatisticsBreakdown[];
+}
+
+export async function fetchMarkupStatistics(params: {
+  accessToken: string;
+  derivAppId: string;
+  dateFrom: string;
+  dateTo: string;
+}): Promise<MarkupStatisticsResult> {
+  const qs = new URLSearchParams({
+    date_from: params.dateFrom,
+    date_to: params.dateTo,
+  });
+  const endpointUrl = assertDerivHost(
+    `${DERIV_API_BASE}/applications/v1/markup-statistics?${qs.toString()}`,
+    ['https:'],
+  );
+  const headers = buildRestAuthHeaders(params.accessToken, params.derivAppId);
+
+  let res: Response;
+  try {
+    res = await fetch(endpointUrl, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new DerivUpstreamError(
+      'transient',
+      502,
+      'Unable to reach Deriv markup statistics endpoint.',
+    );
+  }
+
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+
+  if (!res.ok) {
+    throw classifyHttpFailure(res.status, body);
+  }
+
+  const data = (body as { data?: MarkupStatisticsResult })?.data;
+  if (!data || typeof data.total_app_markup_usd !== 'number') {
+    throw new DerivUpstreamError(
+      'transient',
+      502,
+      'Deriv markup statistics returned an unexpected response.',
+    );
+  }
+  return data;
 }

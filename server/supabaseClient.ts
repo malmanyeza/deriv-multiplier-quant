@@ -30,6 +30,7 @@ export function getSupabase(): SupabaseClient | null {
 
 export interface QuantTradeRecord {
   contract_id: number;
+  user_id?: string;
   account_id: string;
   account_type?: string;
   symbol: string;

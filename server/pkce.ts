@@ -41,6 +41,7 @@ export interface AuthorizeUrlInput {
   state: string;
   codeChallenge: string;
   promptRegistration?: boolean;
+  promptLogin?: boolean;
 }
 
 const DERIV_AUTH_URL = 'https://auth.deriv.com/oauth2/auth';
@@ -56,6 +57,9 @@ export function buildDerivAuthorizeUrl(input: AuthorizeUrlInput): string {
   url.searchParams.set('code_challenge_method', 'S256');
   if (input.promptRegistration) {
     url.searchParams.set('prompt', 'registration');
+  } else if (input.promptLogin) {
+    url.searchParams.set('prompt', 'login');
+    url.searchParams.set('max_age', '0');
   }
   return url.toString();
 }

@@ -21,6 +21,7 @@ interface SimTrade {
   entryTime: number;
   exitTime: number;
   pnlR: number;
+  exitReason: 'RATCHET' | 'TRAIL_EMA' | 'TP' | 'KO' | 'MR_RSI' | 'TIME';
 }
 
 function simulateLiveSymbol(
@@ -29,6 +30,7 @@ function simulateLiveSymbol(
   bars: CandlePoint[],
   evalStart: number,
   commFracOverride?: number,
+  enableRatchet = true,
 ): SimTrade[] {
   if (bars.length < 225) return [];
   const profile = getSymbolStrategyProfile(symbol);
@@ -145,6 +147,7 @@ function simulateLiveSymbol(
     let exitIdx = i + 1;
     let pnlR = 0;
     let peakR = 0;
+    let exitReason: SimTrade['exitReason'] = 'TIME';
 
     for (let j = i + 1; j < Math.min(bars.length, i + 1 + maxHold); j++) {
       exitIdx = j;
@@ -158,20 +161,23 @@ function simulateLiveSymbol(
 
       if (advMove * M - commFrac >= 1.0) {
         pnlR = -1.0;
+        exitReason = 'KO';
         break;
       }
       const barPeakR = favMove * M - commFrac;
       if (activeTp !== null && barPeakR >= activeTp) {
         pnlR = activeTp;
+        exitReason = 'TP';
         break;
       }
-      if (mode === 'trend' && ratchetStages.length > 0) {
+      if (enableRatchet && mode === 'trend' && ratchetStages.length > 0) {
         let activeFloor: number | null = null;
         for (const [trig, flr] of ratchetStages) {
           if (peakR >= trig) activeFloor = flr;
         }
         if (activeFloor !== null && -(advMove * M) - commFrac <= activeFloor) {
           pnlR = activeFloor;
+          exitReason = 'RATCHET';
           break;
         }
       }
@@ -181,20 +187,30 @@ function simulateLiveSymbol(
       if (mode === 'mr') {
         if ((dir === 1 && rsi[j] > 58) || (dir === -1 && rsi[j] < 42)) {
           pnlR = Math.max(-1.0, curCloseR);
+          exitReason = 'MR_RSI';
           break;
         }
       } else {
         if ((dir === 1 && b.close < emaTrail[j]) || (dir === -1 && b.close > emaTrail[j])) {
           pnlR = Math.max(-1.0, curCloseR);
+          exitReason = 'TRAIL_EMA';
           break;
         }
       }
       if (j === Math.min(bars.length, i + 1 + maxHold) - 1) {
         pnlR = Math.max(-1.0, curCloseR);
+        exitReason = 'TIME';
       }
     }
 
-    trades.push({ symbol, timeframe, entryTime, exitTime: Number(bars[exitIdx].time), pnlR });
+    trades.push({
+      symbol,
+      timeframe,
+      entryTime,
+      exitTime: Number(bars[exitIdx].time),
+      pnlR,
+      exitReason,
+    });
     i = exitIdx + 1;
   }
   return trades;
@@ -304,29 +320,46 @@ function main() {
 
   console.log('=== 1-YEAR PER-SYMBOL PERFORMANCE: LIVE WF-13 QUANT (DERIV CANDLES) ===');
   for (const b of basket) {
-    const tr = simulateLiveSymbol(b.sym, b.tf, loadDeriv1Y(b.sym, b.gran), evalStart, b.comm);
+    const tr = simulateLiveSymbol(b.sym, b.tf, loadDeriv1Y(b.sym, b.gran), evalStart, b.comm, true);
     allTrades.push(...tr);
     const w = tr.filter((t) => t.pnlR > 0);
     const gw = w.reduce((s, t) => s + t.pnlR, 0);
     const gl = Math.abs(tr.filter((t) => t.pnlR <= 0).reduce((s, t) => s + t.pnlR, 0));
     const prof = getSymbolStrategyProfile(b.sym);
     const m = b.tf === '15m' ? prof.recommendedMultiplier15m : prof.recommendedMultiplier1h;
+    const nRatch = tr.filter((t) => t.exitReason === 'RATCHET').length;
+    const nTrail = tr.filter((t) => t.exitReason === 'TRAIL_EMA').length;
+    const nTp = tr.filter((t) => t.exitReason === 'TP').length;
+    const nKo = tr.filter((t) => t.exitReason === 'KO').length;
     console.log(
-      `  • ${b.sym.padEnd(10)} (${b.tf.toUpperCase()} ${String(m).padStart(3)}x) | Trades=${String(tr.length).padStart(3)} | WR=${((w.length / Math.max(1, tr.length)) * 100).toFixed(1).padStart(5)}% | PF=${(gl > 0 ? gw / gl : 0).toFixed(2)} | NetR=${gw - gl >= 0 ? '+' : ''}${(gw - gl).toFixed(2)}R`,
+      `  • ${b.sym.padEnd(10)} (${b.tf.toUpperCase()} ${String(m).padStart(3)}x) | Trades=${String(tr.length).padStart(3)} | WR=${((w.length / Math.max(1, tr.length)) * 100).toFixed(1).padStart(5)}% | PF=${(gl > 0 ? gw / gl : 0).toFixed(2)} | NetR=${gw - gl >= 0 ? '+' : ''}${(gw - gl).toFixed(2)}R | Exits: Ratchet=${nRatch} Trail=${nTrail} TP=${nTp} KO=${nKo}`,
     );
   }
 
   console.log('\n=== 1-YEAR PORTFOLIO SUMMARY: LIVE WF-13 (13 SYMBOLS, 8 OPEN SLOTS, $1,000 START) ===');
   for (const [lbl, r] of [
-    ['Live 3.0% Base Risk', 0.03],
-    ['Balanced 2.0% Base Risk', 0.02],
+    ['Aggressive 3.0% Base Risk (Live)', 0.03],
+    ['Moderate 2.0% Base Risk', 0.02],
     ['Conservative 1.5% Base Risk', 0.015],
+    ['Low-Risk 1.0% Base Risk', 0.01],
+    ['Ultra-Safe 0.75% Base Risk', 0.0075],
   ] as const) {
     const pf = runPortfolio(allTrades, 1000, 8, r);
     console.log(
-      `  ${lbl.padEnd(28)} -> Trades=${pf.taken} | WR=${pf.wr.toFixed(1)}% | PF=${pf.pf.toFixed(2)} | NetR=+${pf.netR.toFixed(2)}R | AvgMo=+${pf.avgMo.toFixed(2)}% | MedMo=+${pf.medMo.toFixed(2)}% | ProfMonths=${pf.posFullMonths}/${pf.fullMonthsCount} | $1,000 -> $${pf.finalEq.toLocaleString('en-US', { maximumFractionDigits: 2 })} | MaxDD=-${pf.maxDd.toFixed(2)}%`,
+      `  ${lbl.padEnd(36)} -> Trades=${pf.taken} | WR=${pf.wr.toFixed(1)}% | PF=${pf.pf.toFixed(2)} | NetR=+${pf.netR.toFixed(2)}R | AvgMo=+${pf.avgMo.toFixed(2)}% | MedMo=+${pf.medMo.toFixed(2)}% | ProfMonths=${pf.posFullMonths}/${pf.fullMonthsCount} | $1,000 -> $${pf.finalEq.toLocaleString('en-US', { maximumFractionDigits: 2 })} | MaxDD=-${pf.maxDd.toFixed(2)}%`,
     );
   }
+
+  // Comparison: WITHOUT Ratchet floor (Trailing EMA Only)
+  const noRatchetTrades: SimTrade[] = [];
+  for (const b of basket) {
+    const tr = simulateLiveSymbol(b.sym, b.tf, loadDeriv1Y(b.sym, b.gran), evalStart, b.comm, false);
+    noRatchetTrades.push(...tr);
+  }
+  const pfNoRatchet = runPortfolio(noRatchetTrades, 1000, 8, 0.03);
+  console.log(
+    `  ${'Baseline (No Ratchet Floor, 3.0%)'.padEnd(36)} -> Trades=${pfNoRatchet.taken} | WR=${pfNoRatchet.wr.toFixed(1)}% | PF=${pfNoRatchet.pf.toFixed(2)} | NetR=+${pfNoRatchet.netR.toFixed(2)}R | AvgMo=+${pfNoRatchet.avgMo.toFixed(2)}% | MedMo=+${pfNoRatchet.medMo.toFixed(2)}% | ProfMonths=${pfNoRatchet.posFullMonths}/${pfNoRatchet.fullMonthsCount} | $1,000 -> $${pfNoRatchet.finalEq.toLocaleString('en-US', { maximumFractionDigits: 2 })} | MaxDD=-${pfNoRatchet.maxDd.toFixed(2)}%`,
+  );
 
   const pf3 = runPortfolio(allTrades, 1000, 8, 0.03);
   console.log('\n=== MONTH-BY-MONTH ($1,000 START @ LIVE 3.0% BASE RISK) ===');

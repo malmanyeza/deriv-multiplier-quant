@@ -26,12 +26,15 @@ import { QuantStrategyLab } from './components/QuantStrategyLab';
 import { OrderTicket } from './components/OrderTicket';
 import { PositionsPanel } from './components/PositionsPanel';
 import { LicensesModal } from './components/LicensesModal';
+import { PlatformPortalModal } from './components/PlatformPortalModal';
+import { WelcomeLoginScreen } from './components/WelcomeLoginScreen';
 
 const PUBLIC_QUOTE_CURRENCY =
   (import.meta.env.VITE_PUBLIC_QUOTE_CURRENCY as string | undefined)?.trim() || 'USD';
 
 export const App: React.FC = () => {
   const {
+    loading: authLoading,
     oauthConfigured,
     patConfigured,
     patReady,
@@ -77,6 +80,8 @@ export const App: React.FC = () => {
   const chartSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [licensesOpen, setLicensesOpen] = useState<boolean>(false);
+  const [portalOpen, setPortalOpen] = useState<boolean>(false);
+  const [previewDesk, setPreviewDesk] = useState<boolean>(false);
   const [manualTicketOpen, setManualTicketOpen] = useState<boolean>(false);
 
   const rulesGenerationRef = useRef<number>(0);
@@ -255,6 +260,19 @@ export const App: React.FC = () => {
     stopLoss,
   });
 
+  if (!authenticated && !previewDesk) {
+    return (
+      <WelcomeLoginScreen
+        loading={authLoading}
+        authenticated={authenticated}
+        oauthConfigured={oauthConfigured}
+        patConfigured={patConfigured}
+        onAdminPatLogin={startLogin}
+        onPreviewCharts={() => setPreviewDesk(true)}
+      />
+    );
+  }
+
   return (
     <div className="app-shell">
       <HeaderBar
@@ -264,6 +282,7 @@ export const App: React.FC = () => {
           setManualTicketOpen((prev) => !prev);
         }}
         onOpenLicenses={() => setLicensesOpen(true)}
+        onOpenPortal={() => setPortalOpen(true)}
       />
 
       {(authNotice || connectionError || marketError) && (
@@ -427,6 +446,7 @@ export const App: React.FC = () => {
       </main>
 
       <LicensesModal open={licensesOpen} onClose={() => setLicensesOpen(false)} />
+      <PlatformPortalModal open={portalOpen} onClose={() => setPortalOpen(false)} />
     </div>
   );
 };

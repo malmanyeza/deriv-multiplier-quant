@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
   Activity,
+  Coins,
+  ExternalLink,
   LogIn,
   LogOut,
   RefreshCw,
   RotateCcw,
   Scale,
   SlidersHorizontal,
-  UserPlus,
   Wifi,
   WifiOff,
 } from 'lucide-react';
@@ -17,12 +18,14 @@ interface HeaderBarProps {
   manualTicketOpen: boolean;
   onToggleManualTicket: () => void;
   onOpenLicenses: () => void;
+  onOpenPortal: () => void;
 }
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({
   manualTicketOpen,
   onToggleManualTicket,
   onOpenLicenses,
+  onOpenPortal,
 }) => {
   const {
     oauthConfigured,
@@ -34,7 +37,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     liveBalance,
     connectionStatus,
     startLogin,
-    startSignup,
     switchAccount,
     resetDemoBalance,
     reconnectSocket,
@@ -171,6 +173,18 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 {displayBalance !== null ? displayBalance.toFixed(2) : '—'}{' '}
                 {selectedAccount.currency}
               </span>
+              {selectedAccount.account_type === 'real' && (
+                <a
+                  href="https://app.deriv.com/cashier/deposit"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary btn-sm"
+                  style={{ marginLeft: 6, padding: '3px 8px', fontSize: '0.75rem' }}
+                  title="Deposit funds into your Deriv account"
+                >
+                  Deposit <ExternalLink size={12} aria-hidden="true" />
+                </a>
+              )}
               {selectedAccount.account_type === 'demo' && (
                 <button
                   type="button"
@@ -200,35 +214,46 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </div>
         ) : (
           <div className="auth-cta-group">
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={startLogin}
-              title={
-                patReady
-                  ? 'Connect using your server-side Personal Access Token'
-                  : patConfigured
-                    ? 'Add DERIV_APP_ID in .env to enable PAT authentication'
-                    : oauthConfigured
-                      ? 'Sign in with OAuth 2.0 to place Rise/Fall orders'
-                      : 'Configure DERIV_APP_ID + DERIV_PAT or DERIV_CLIENT_ID in .env'
-              }
-            >
-              <LogIn size={14} aria-hidden="true" />
-              <span>{patConfigured ? 'Connect PAT' : 'Log in'}</span>
-            </button>
-            {!patConfigured && (
+            {oauthConfigured && (
               <button
                 type="button"
-                className="btn btn-outline btn-sm"
-                onClick={startSignup}
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  window.location.assign('/api/auth/login');
+                }}
+                title="Sign in with your Deriv account (OAuth)"
               >
-                <UserPlus size={14} aria-hidden="true" />
-                <span>Sign up</span>
+                <LogIn size={14} aria-hidden="true" />
+                <span>Connect Deriv</span>
+              </button>
+            )}
+            {patConfigured && (
+              <button
+                type="button"
+                className={`btn btn-sm ${oauthConfigured ? 'btn-outline' : 'btn-primary'}`}
+                onClick={startLogin}
+                title={
+                  patReady
+                    ? 'Connect using your server-side Personal Access Token'
+                    : 'Add DERIV_APP_ID in .env to enable PAT authentication'
+                }
+              >
+                <LogIn size={14} aria-hidden="true" />
+                <span>{oauthConfigured ? 'Admin PAT' : 'Connect PAT'}</span>
               </button>
             )}
           </div>
         )}
+
+        <button
+          type="button"
+          className="btn btn-outline btn-sm"
+          onClick={onOpenPortal}
+          title="Connect Deriv, deposit & App Markup revenue"
+        >
+          <Coins size={14} aria-hidden="true" />
+          <span>Markup</span>
+        </button>
 
         <button
           type="button"

@@ -84,3 +84,56 @@ CREATE POLICY "Allow public read-write for user bot configs"
   FOR ALL
   USING (true)
   WITH CHECK (true);
+
+-- =========================================================================
+-- MULTI-USER PLATFORM EXTENSION (Users, Connected Deriv Accounts, Markup)
+-- =========================================================================
+
+-- 5. Table: platform_users (Profiles linked to Supabase Auth users)
+CREATE TABLE IF NOT EXISTS public.platform_users (
+  id UUID PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  full_name TEXT,
+  role TEXT NOT NULL DEFAULT 'trader', -- 'trader' or 'admin'
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 6. Table: user_deriv_connections (Each user's connected Deriv account & bot config)
+CREATE TABLE IF NOT EXISTS public.user_deriv_connections (
+  id BIGSERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES public.platform_users(id) ON DELETE CASCADE,
+  deriv_account_id TEXT NOT NULL,
+  account_type TEXT NOT NULL DEFAULT 'demo', -- 'demo' or 'real'
+  currency TEXT NOT NULL DEFAULT 'USD',
+  balance NUMERIC NOT NULL DEFAULT 0,
+  auth_method TEXT NOT NULL DEFAULT 'oauth', -- 'oauth' or 'pat'
+  deriv_token_encrypted TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  auto_pilot_armed BOOLEAN NOT NULL DEFAULT FALSE,
+  selected_timeframe TEXT NOT NULL DEFAULT 'dual',
+  risk_pct NUMERIC NOT NULL DEFAULT 0.03,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, deriv_account_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_deriv_conn_user ON public.user_deriv_connections(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_deriv_conn_armed ON public.user_deriv_connections(auto_pilot_armed);
+
+-- Add optional user_id attribution to quant_trades & bot_audit_logs
+ALTER TABLE public.quant_trades ADD COLUMN IF NOT EXISTS user_id UUID;
+ALTER TABLE public.bot_audit_logs ADD COLUMN IF NOT EXISTS user_id UUID;
+
+ALTER TABLE public.platform_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_deriv_connections ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read-write for platform users"
+  ON public.platform_users
+  FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Allow public read-write for user deriv connections"
+  ON public.user_deriv_connections
+  FOR ALL
+  USING (true)
+  WITH CHECK (true);

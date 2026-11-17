@@ -1,0 +1,333 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+/**
+ * 2-YEAR DEEP 1-HOUR MACRO QUANT BACKTEST (NOVEMBER 2024 TO NOVEMBER 2026)
+ * Sizing: 3.0% Risk Per Trade ($1,000 Starting Capital)
+ * Assets: Bitcoin (BTC/USD) & Ethereum (ETH/USD)
+ * Mechanics: Exact Deriv 100x Multiplier Contract Rules + Commission Drag
+ */
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function fetch2Years1h(symbol) {
+  console.log(`Downloading 2-year 1h dataset for ${symbol} (~17,520 bars)...`);
+  const bars = [];
+  // 2 years ago from 2026-11-09 is 2024-11-09 (1731110400000 ms)
+  let startTime = 1731110400000;
+  const now = Date.now();
+
+  while (startTime < now) {
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=1000&startTime=${startTime}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) break;
+
+      for (const d of data) {
+        bars.push({
+          time: Math.floor(d[0] / 1000),
+          open: parseFloat(d[1]),
+          high: parseFloat(d[2]),
+          low: parseFloat(d[3]),
+          close: parseFloat(d[4]),
+        });
+      }
+
+      const lastBarTime = data[data.length - 1][0];
+      startTime = lastBarTime + 3600 * 1000;
+      await sleep(100);
+    } catch (err) {
+      console.warn(`Error fetching ${symbol}: ${err.message}. Retrying in 1s...`);
+      await sleep(1000);
+    }
+  }
+
+  // Deduplicate and sort
+  const map = new Map();
+  for (const b of bars) map.set(b.time, b);
+  return Array.from(map.values()).sort((a, b) => a.time - b.time);
+}
+
+function computeEMA(values, period) {
+  const out = new Array(values.length).fill(0);
+  if (values.length === 0) return out;
+  const k = 2 / (period + 1);
+  out[0] = values[0];
+  for (let i = 1; i < values.length; i++) {
+    out[i] = values[i] * k + out[i - 1] * (1 - k);
+  }
+  return out;
+}
+
+function computeRSI(closes, period = 14) {
+  const rsi = new Array(closes.length).fill(50);
+  if (closes.length <= period) return rsi;
+  let ag = 0;
+  let al = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff > 0) ag += diff;
+    else al -= diff;
+  }
+  ag /= period;
+  al /= period;
+  rsi[period] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    ag = (ag * (period - 1) + (diff > 0 ? diff : 0)) / period;
+    al = (al * (period - 1) + (diff < 0 ? -diff : 0)) / period;
+    rsi[i] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+  }
+  return rsi;
+}
+
+function computeADXandATR(bars, period = 14) {
+  const n = bars.length;
+  const tr = new Array(n).fill(0);
+  const plusDM = new Array(n).fill(0);
+  const minusDM = new Array(n).fill(0);
+  const atr = new Array(n).fill(0);
+  const adx = new Array(n).fill(20);
+
+  for (let i = 1; i < n; i++) {
+    const up = bars[i].high - bars[i - 1].high;
+    const dn = bars[i - 1].low - bars[i].low;
+    plusDM[i] = up > dn && up > 0 ? up : 0;
+    minusDM[i] = dn > up && dn > 0 ? dn : 0;
+    tr[i] = Math.max(
+      bars[i].high - bars[i].low,
+      Math.abs(bars[i].high - bars[i - 1].close),
+      Math.abs(bars[i].low - bars[i - 1].close)
+    );
+  }
+
+  let trSum = 0;
+  let pdmSum = 0;
+  let mdmSum = 0;
+  const dxArr = new Array(n).fill(0);
+
+  for (let i = 1; i < n; i++) {
+    if (i <= period) {
+      trSum += tr[i];
+      pdmSum += plusDM[i];
+      mdmSum += minusDM[i];
+      atr[i] = trSum / i;
+    } else {
+      trSum = trSum - trSum / period + tr[i];
+      pdmSum = pdmSum - pdmSum / period + plusDM[i];
+      mdmSum = mdmSum - mdmSum / period + minusDM[i];
+      atr[i] = trSum / period;
+      const pdi = trSum > 0 ? (100 * pdmSum) / trSum : 0;
+      const mdi = trSum > 0 ? (100 * mdmSum) / trSum : 0;
+      dxArr[i] = pdi + mdi > 0 ? (100 * Math.abs(pdi - mdi)) / (pdi + mdi) : 0;
+      if (i === period * 2) {
+        let s = 0;
+        for (let k = period + 1; k <= period * 2; k++) s += dxArr[k];
+        adx[i] = s / period;
+      } else if (i > period * 2) {
+        adx[i] = (adx[i - 1] * (period - 1) + dxArr[i]) / period;
+      }
+    }
+  }
+  return { atr, adx };
+}
+
+function extractTrades(bars, symbol) {
+  const commDollars = symbol.includes('BTC') ? 2.99 : 7.99;
+  const lookback = 48;
+  const multiplier = 100;
+  const koMovePct = (100 - commDollars) / (100 * multiplier);
+
+  const closes = bars.map(b => b.close);
+  const ema100 = computeEMA(closes, 100);
+  const ema30 = computeEMA(closes, 30);
+  const rsi = computeRSI(closes, 14);
+  const { atr, adx } = computeADXandATR(bars, 14);
+
+  const trades = [];
+  const maxHold = 140;
+  let i = 120;
+
+  while (i < bars.length - 2) {
+    const atrPct = bars[i].close > 0 ? atr[i] / bars[i].close : 1;
+    if (atrPct > 0.0065) {
+      i++;
+      continue;
+    }
+
+    let dir = 0;
+    let mode = null;
+
+    if (adx[i] >= 24) {
+      let hi = -Infinity;
+      let lo = Infinity;
+      for (let k = i - lookback; k < i; k++) {
+        if (bars[k].high > hi) hi = bars[k].high;
+        if (bars[k].low < lo) lo = bars[k].low;
+      }
+      if (bars[i].close > hi && bars[i].close > ema100[i] && ema30[i] > ema100[i]) {
+        dir = 1;
+        mode = 'trend';
+      } else if (bars[i].close < lo && bars[i].close < ema100[i] && ema30[i] < ema100[i]) {
+        dir = -1;
+        mode = 'trend';
+      }
+    } else if (adx[i] <= 20) {
+      if (rsi[i - 1] < 27 && rsi[i] >= 27 && bars[i].close > bars[i].open) {
+        dir = 1;
+        mode = 'mr';
+      } else if (rsi[i - 1] > 73 && rsi[i] <= 73 && bars[i].close < bars[i].open) {
+        dir = -1;
+        mode = 'mr';
+      }
+    }
+
+    if (dir === 0 || !mode) {
+      i++;
+      continue;
+    }
+
+    const entry = bars[i + 1].open;
+    const entryTime = bars[i + 1].time;
+    const koPrice = dir === 1 ? entry * (1 - koMovePct) : entry * (1 + koMovePct);
+
+    const hold = mode === 'trend' ? maxHold : 36;
+    const lastBar = Math.min(bars.length - 1, i + 1 + hold);
+    let pnlPct = 0;
+    let exitIdx = lastBar;
+
+    for (let j = i + 1; j <= lastBar; j++) {
+      if ((dir === 1 && bars[j].low <= koPrice) || (dir === -1 && bars[j].high >= koPrice)) {
+        pnlPct = -100;
+        exitIdx = j;
+        break;
+      }
+
+      if (mode === 'trend') {
+        if ((dir === 1 && bars[j].close < ema30[j]) || (dir === -1 && bars[j].close > ema30[j])) {
+          const move = dir === 1 ? (bars[j].close - entry) / entry : (entry - bars[j].close) / entry;
+          pnlPct = move * multiplier * 100 - commDollars;
+          exitIdx = j;
+          break;
+        }
+      } else if (mode === 'mr') {
+        const move = dir === 1 ? (bars[j].high - entry) / entry : (entry - bars[j].low) / entry;
+        if (move * multiplier * 100 >= 160) {
+          pnlPct = 160 - commDollars;
+          exitIdx = j;
+          break;
+        }
+      }
+
+      if (j === lastBar) {
+        const move = dir === 1 ? (bars[j].close - entry) / entry : (entry - bars[j].close) / entry;
+        pnlPct = move * multiplier * 100 - commDollars;
+        exitIdx = j;
+      }
+    }
+
+    if (pnlPct < -100) pnlPct = -100;
+
+    trades.push({
+      symbol,
+      entryTime,
+      exitTime: bars[exitIdx].time,
+      pnlPct,
+      mode,
+    });
+
+    i = exitIdx + 1;
+  }
+
+  return trades;
+}
+
+async function run() {
+  console.log('========================================================================');
+  console.log('  TRUE 2-YEAR 1-HOUR MACRO QUANT BACKTEST (FULL 730 DAYS)');
+  console.log('  Period: November 2024 to November 2026 (~17,520 Candles per Asset)');
+  console.log('  Comparison: 1.5% vs 2.0% vs 3.0% Risk Per Trade ($1,000 Starting)');
+  console.log('========================================================================\n');
+
+  const btcBars = await fetch2Years1h('BTCUSDT');
+  console.log(`Loaded ${btcBars.length} 1H candles for BTCUSDT (${new Date(btcBars[0].time * 1000).toISOString().split('T')[0]} to ${new Date(btcBars[btcBars.length - 1].time * 1000).toISOString().split('T')[0]}).`);
+  const btcTrades = extractTrades(btcBars, 'BTC/USD');
+  console.log(`  -> Found ${btcTrades.length} trades for BTC/USD`);
+
+  const ethBars = await fetch2Years1h('ETHUSDT');
+  console.log(`Loaded ${ethBars.length} 1H candles for ETHUSDT (${new Date(ethBars[0].time * 1000).toISOString().split('T')[0]} to ${new Date(ethBars[ethBars.length - 1].time * 1000).toISOString().split('T')[0]}).`);
+  const ethTrades = extractTrades(ethBars, 'ETH/USD');
+  console.log(`  -> Found ${ethTrades.length} trades for ETH/USD`);
+
+  const allTrades = [...btcTrades, ...ethTrades].sort((a, b) => a.entryTime - b.entryTime);
+  console.log(`\nTotal Portfolio Trades: ${allTrades.length} trades over 2 full years.`);
+
+  for (const risk of [0.015, 0.020, 0.030]) {
+    let balance = 1000;
+    let peak = 1000;
+    let maxDd = 0;
+    let wins = 0;
+    let losses = 0;
+    let consecLoss = 0;
+    let maxConsecLoss = 0;
+    const quarterly = new Map();
+    const tradeLedger = [];
+
+    for (const t of allTrades) {
+      const stake = balance * risk;
+      const dollarPnl = stake * (t.pnlPct / 100);
+      balance += dollarPnl;
+      if (balance > peak) peak = balance;
+      const dd = ((peak - balance) / peak) * 100;
+      if (dd > maxDd) maxDd = dd;
+
+      if (dollarPnl > 0) {
+        wins++;
+        consecLoss = 0;
+      } else {
+        losses++;
+        consecLoss++;
+        if (consecLoss > maxConsecLoss) maxConsecLoss = consecLoss;
+      }
+
+      const d = new Date(t.entryTime * 1000);
+      const qKey = `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`;
+      if (!quarterly.has(qKey)) quarterly.set(qKey, { trades: 0, wins: 0, pnl: 0, balance });
+      const qb = quarterly.get(qKey);
+      qb.trades++;
+      if (dollarPnl > 0) qb.wins++;
+      qb.pnl += dollarPnl;
+      qb.balance = balance;
+
+      tradeLedger.push(dollarPnl);
+    }
+
+    const total = wins + losses;
+    const wr = ((wins / total) * 100).toFixed(1);
+    const returnPct = (((balance - 1000) / 1000) * 100).toFixed(2);
+    const grossW = tradeLedger.filter(p => p > 0).reduce((s, p) => s + p, 0);
+    const grossL = Math.abs(tradeLedger.filter(p => p < 0).reduce((s, p) => s + p, 0));
+    const pf = grossL > 0 ? (grossW / grossL).toFixed(2) : '99.9';
+
+    console.log(`\n========================================================================`);
+    console.log(`  🌟 2-YEAR RESULT @ ${(risk * 100).toFixed(1)}% RISK PER TRADE:`);
+    console.log(`  • Starting Capital:    $1,000.00`);
+    console.log(`  • Final Capital:       $${balance.toFixed(2)} (+${returnPct}%) 🚀`);
+    console.log(`  • Win Rate:            ${wr}% (${wins} Wins / ${losses} Losses in ${total} Trades)`);
+    console.log(`  • Profit Factor:       ${pf}`);
+    console.log(`  • Max Portfolio DD:    -${maxDd.toFixed(2)}%`);
+    console.log(`  • Max Consec Losses:   ${maxConsecLoss}`);
+    console.log(`\n  🗓️ Quarter-by-Quarter Compounding Ledger:`);
+    for (const [q, d] of quarterly) {
+      const qwr = ((d.wins / d.trades) * 100).toFixed(1);
+      const sign = d.pnl >= 0 ? '+' : '';
+      console.log(`    • ${q} | Trades: ${String(d.trades).padStart(2, ' ')} | WinRate: ${qwr.padStart(5, ' ')}% | Net: ${sign}$${d.pnl.toFixed(2).padStart(8, ' ')} | Balance: $${d.balance.toFixed(2)}`);
+    }
+  }
+
+  console.log(`\n========================================================================\n`);
+}
+
+run().catch(console.error);

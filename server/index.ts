@@ -21,6 +21,9 @@ import {
   saveQuantTrade,
 } from './supabaseClient.js';
 import { QuantServerRunner } from './quantRunner.js';
+import { MultiUserQuantManager } from './multiUserRunner.js';
+import { registerPlatformRoutes, resolvePlatformUser } from './platformRoutes.js';
+import { upsertUserDerivConnection } from './platformStore.js';
 
 dotenv.config();
 
@@ -282,6 +285,7 @@ export function createApp(
       state: pkce.state,
       codeChallenge: pkce.codeChallenge,
       promptRegistration,
+      promptLogin: !promptRegistration,
     });
 
     res.redirect(authorizeUrl);
@@ -339,6 +343,20 @@ export function createApp(
       });
 
       const accounts = await fetchOptionsAccounts(tokenResult.accessToken, appId);
+      const platformUser = await resolvePlatformUser(req);
+      if (platformUser) {
+        for (const acct of accounts.filter((a) => a.status === 'active')) {
+          await upsertUserDerivConnection({
+            userId: platformUser.id,
+            derivAccountId: acct.account_id,
+            accountType: acct.account_type,
+            currency: acct.currency,
+            balance: acct.balance,
+            authMethod: 'oauth',
+            derivToken: tokenResult.accessToken,
+          });
+        }
+      }
       const oldSid = req.cookies?.[SESSION_COOKIE_NAME] as string | undefined;
       const rotated = store.rotateAuthenticatedSession(
         oldSid,
@@ -672,6 +690,13 @@ export function createApp(
     res.json({ ok: saved });
   });
 
+  registerPlatformRoutes(app, {
+    derivAppId: appId,
+    derivPat: config.derivPat,
+    oauthSessionStore: store,
+    oauthCookieName: SESSION_COOKIE_NAME,
+  });
+
   if (isProduction) {
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
     const distDir = path.resolve(__dirname, '../dist');
@@ -692,11 +717,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(currentFil
     derivAppId: (cfg.derivAppId || cfg.derivClientId || '').trim(),
   });
   const app = createApp(cfg, new InMemorySessionStore(), runner);
+  const multiUserRunner = new MultiUserQuantManager((cfg.derivAppId || cfg.derivClientId || '').trim());
   app.listen(cfg.port, () => {
     const hasAppId = Boolean(cfg.derivAppId || cfg.derivClientId);
     console.log(
       `[BFF] Listening on http://localhost:${cfg.port} (OAuth ready: ${Boolean(cfg.derivClientId && cfg.derivRedirectUri)}, Server PAT present: ${Boolean(cfg.derivPat)}, App ID present: ${hasAppId})`,
     );
     void runner.init();
+    multiUserRunner.start();
   });
 }

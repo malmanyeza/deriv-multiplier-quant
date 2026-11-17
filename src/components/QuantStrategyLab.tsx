@@ -74,6 +74,7 @@ interface ServerRunnerSnapshot {
 interface BotAuditEntry {
   id: string;
   time: string;
+  date?: string;
   type: 'info' | 'entry' | 'exit' | 'blocked';
   message: string;
 }
@@ -301,6 +302,50 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         if (typeof data.riskPct === 'number' && Number.isFinite(data.riskPct)) {
           setRiskPct(data.riskPct);
         }
+      }
+
+      // Fetch persistent database audit logs (entries, exits, profit-ratchet locks)
+      try {
+        const auditRes = await fetch('/api/quant/audit?limit=30', { credentials: 'include' });
+        if (auditRes.ok) {
+          const auditJson = (await auditRes.json()) as { logs?: Array<{
+            id?: number | string;
+            created_at?: string;
+            log_type?: string;
+            message?: string;
+          }> };
+          if (Array.isArray(auditJson.logs) && auditJson.logs.length > 0) {
+            const mappedDbLogs: BotAuditEntry[] = auditJson.logs.map((row) => {
+              const d = row.created_at ? new Date(row.created_at) : null;
+              return {
+                id: `db-${row.id ?? Math.random()}`,
+                time: d
+                  ? d.toLocaleTimeString(undefined, {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: false,
+                    })
+                  : '—',
+                date: d
+                  ? d.toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    })
+                  : '',
+                type: (row.log_type === 'entry' ||
+                row.log_type === 'exit' ||
+                row.log_type === 'blocked'
+                  ? row.log_type
+                  : 'info') as BotAuditEntry['type'],
+                message: String(row.message ?? ''),
+              };
+            });
+            setAuditLogs(mappedDbLogs);
+          }
+        }
+      } catch {
+        // Non-fatal
       }
     } catch {
       // Backend polling non-fatal
@@ -636,7 +681,9 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
 
   const regimeBadge =
     REGIME_BADGES[evaluation.regime] ?? REGIME_BADGES.NEUTRAL_TRANSITION;
-  const combinedLogs = [...auditLogs, ...(serverStatus?.recentLogs ?? [])].slice(0, 8);
+  const combinedLogs = (
+    auditLogs.length > 0 ? auditLogs : serverStatus?.recentLogs ?? []
+  ).slice(0, 20);
   const atrGateLabel = effectiveEngineTf === '15m' ? '15m ATR%' : '1h ATR%';
   const emaLabel = 'EMA (30 / 100)';
   const emaBullish = evaluation.indicators
@@ -899,7 +946,9 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
             ) : (
               combinedLogs.map((entry) => (
                 <div key={entry.id} className={`quant-log-item log-${entry.type}`}>
-                  <span className="muted-note">[{entry.time}]</span>{' '}
+                  <span className="muted-note">
+                    [{entry.date ? `${entry.date} ` : ''}{entry.time}]
+                  </span>{' '}
                   <span>{entry.message}</span>
                 </div>
               ))
