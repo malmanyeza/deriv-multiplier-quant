@@ -785,8 +785,20 @@ export function evaluateQuantSignal(params: {
       }
     }
 
-    const currentR =
+    let currentR =
       openForSymbol.buyPrice > 0 ? openForSymbol.profit / openForSymbol.buyPrice : 0;
+
+    // Fallback: if openForSymbol was passed without live profit hydrated (e.g. raw portfolio snapshot),
+    // derive exact current R from live spot vs entry price so currentR never collapses to 0 when in profit
+    if (currentR === 0 && entrySpot && entrySpot > 0) {
+      const liveSpot = openForSymbol.currentSpot && openForSymbol.currentSpot > 0
+        ? openForSymbol.currentSpot
+        : bar.close;
+      const liveMove = isLong
+        ? (liveSpot - entrySpot) / entrySpot
+        : (entrySpot - liveSpot) / entrySpot;
+      currentR = mult * liveMove - commFrac;
+    }
 
     // Reconstruct peak R reached across completed candles since entry + live tick cache
     let maxCandleFavR = currentR;

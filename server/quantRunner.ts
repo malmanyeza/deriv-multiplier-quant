@@ -788,6 +788,7 @@ export class QuantServerRunner {
           if (pocRes.proposal_open_contract) {
             const liveNorm = normalizeOpenContract(pocRes.proposal_open_contract);
             if (liveNorm && !liveNorm.isSold) {
+              Object.assign(openPos, liveNorm);
               await this.checkAndExecuteProfitRatchet(liveNorm);
             }
           }
