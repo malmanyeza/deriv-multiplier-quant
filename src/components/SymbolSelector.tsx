@@ -30,17 +30,11 @@ interface BotMarketMeta {
 }
 
 const ACTIVE_BOT_MARKETS: BotMarketMeta[] = [
-  { code: 'cryBTCUSD', fallbackName: 'BTC/USD', engine: '1H Macro', multLabel: '100x' },
-  { code: 'cryETHUSD', fallbackName: 'ETH/USD', engine: '1H Macro', multLabel: '100x' },
-  { code: 'frxXAUUSD', fallbackName: 'Gold/USD', engine: '1H Macro', multLabel: '200x' },
-  { code: 'frxXAGUSD', fallbackName: 'Silver/USD', engine: '1H Macro', multLabel: '100x' },
-  { code: 'frxUSDCHF', fallbackName: 'USD/CHF', engine: '1H Macro', multLabel: '300x' },
-  { code: 'frxUSDJPY', fallbackName: 'USD/JPY', engine: '1H Macro', multLabel: '300x' },
-  { code: 'frxGBPJPY', fallbackName: 'GBP/JPY', engine: '1H Macro', multLabel: '300x' },
-  { code: 'frxAUDJPY', fallbackName: 'AUD/JPY', engine: '1H Macro', multLabel: '300x' },
-  { code: 'frxEURUSD', fallbackName: 'EUR/USD', engine: '1H Macro', multLabel: '200x' },
-  { code: 'frxGBPUSD', fallbackName: 'GBP/USD', engine: '1H Macro', multLabel: '300x' },
-  { code: 'frxGBPAUD', fallbackName: 'GBP/AUD', engine: '1H Macro', multLabel: '300x' },
+  { code: 'cryBTCUSD', fallbackName: 'BTC/USD', engine: '1H Macro', multLabel: '150x' },
+  { code: 'cryETHUSD', fallbackName: 'ETH/USD', engine: '1H Macro', multLabel: '150x' },
+  { code: 'frxXAUUSD', fallbackName: 'Gold/USD', engine: '1H Macro', multLabel: '250x' },
+  { code: 'frxUSDCHF', fallbackName: 'USD/CHF', engine: '1H Macro', multLabel: '250x' },
+  { code: 'frxUSDJPY', fallbackName: 'USD/JPY', engine: '1H Macro', multLabel: '250x' },
   { code: '1HZ100V', fallbackName: 'Volatility 100 (1s)', engine: '15M Turbo', multLabel: '40x' },
   { code: 'R_75', fallbackName: 'Volatility 75', engine: '15M Turbo', multLabel: '50x' },
 ];

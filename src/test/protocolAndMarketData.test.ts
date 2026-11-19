@@ -634,7 +634,7 @@ describe('Quant Strategy Engine (Chaos Gate, CSPRNG Block & Quarter-Kelly Risk)'
       riskPctOfBalance: 0.03,
       timeframe: '15m',
     });
-    expect(evR75.riskPlan.recommendedStake).toBe(380); // 3.80% on R_75
+    expect(evR75.riskPlan.recommendedStake).toBe(280); // Elite 7 Alpha-Weighted Kelly: 2.80% on R_75
     expect(evR75.riskPlan.recommendedMultiplier).toBe(50);
 
     const evXag = evaluateQuantSignal({
@@ -658,8 +658,8 @@ describe('Quant Strategy Engine (Chaos Gate, CSPRNG Block & Quarter-Kelly Risk)'
       riskPctOfBalance: 0.03,
       timeframe: '1h',
     });
-    expect(evEth.riskPlan.recommendedStake).toBe(280); // 2.80% on ETH
-    expect(evEth.riskPlan.recommendedMultiplier).toBe(100);
+    expect(evEth.riskPlan.recommendedStake).toBe(380); // Elite 7 Alpha-Weighted Kelly: 3.80% on ETH
+    expect(evEth.riskPlan.recommendedMultiplier).toBe(150); // Phase 6 Peak-Multiplier
 
     const evEurUsd = evaluateQuantSignal({
       symbol: 'frxEURUSD',
@@ -670,8 +670,8 @@ describe('Quant Strategy Engine (Chaos Gate, CSPRNG Block & Quarter-Kelly Risk)'
       riskPctOfBalance: 0.03,
       timeframe: '1h',
     });
-    expect(evEurUsd.riskPlan.recommendedStake).toBe(300); // 3.00% on EUR/USD (WF-13)
-    expect(evEurUsd.riskPlan.recommendedMultiplier).toBe(200);
+    expect(evEurUsd.riskPlan.recommendedStake).toBe(220); // Phase 1 Kelly trim: 2.20% on EUR/USD (WF-12)
+    expect(evEurUsd.riskPlan.recommendedMultiplier).toBe(150); // Valid Deriv live exchange multiplier
 
     // 2. Verify Two-Stage Profit-Ratchet thresholds on 15M and 1H
     expect(getRatchetFloorForPeakR('R_75', '15m', 0.50)).toBeNull();

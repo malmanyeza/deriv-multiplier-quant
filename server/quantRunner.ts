@@ -11,6 +11,7 @@ import {
   saveQuantTrade,
 } from './supabaseClient.js';
 import {
+  computeCppiRiskMultiplier,
   evaluateQuantSignal,
   getRatchetFloorForPeakR,
   type QuantTimeframe,
@@ -39,14 +40,8 @@ const BASKET_1H = [
   { code: 'cryBTCUSD', name: 'BTC/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'cryETHUSD', name: 'ETH/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'frxXAUUSD', name: 'Gold XAU/USD', market: 'commodities', engine: '1h' as const },
-  { code: 'frxXAGUSD', name: 'Silver XAG/USD', market: 'commodities', engine: '1h' as const },
   { code: 'frxUSDCHF', name: 'USD/CHF', market: 'forex', engine: '1h' as const },
   { code: 'frxUSDJPY', name: 'USD/JPY', market: 'forex', engine: '1h' as const },
-  { code: 'frxGBPJPY', name: 'GBP/JPY', market: 'forex', engine: '1h' as const },
-  { code: 'frxAUDJPY', name: 'AUD/JPY', market: 'forex', engine: '1h' as const },
-  { code: 'frxEURUSD', name: 'EUR/USD', market: 'forex', engine: '1h' as const },
-  { code: 'frxGBPUSD', name: 'GBP/USD', market: 'forex', engine: '1h' as const },
-  { code: 'frxGBPAUD', name: 'GBP/AUD', market: 'forex', engine: '1h' as const },
 ];
 
 interface SymbolMultiplierRule {
@@ -73,6 +68,9 @@ export interface ServerRunnerStatus {
   accountId: string | null;
   accountType: 'demo' | 'real' | null;
   balance: number;
+  peakBalance: number;
+  cppiMultiplier: number;
+  portfolioDrawdownPct: number;
   currency: string;
   timeframe: QuantTimeframe;
   riskPct: number;
@@ -91,6 +89,18 @@ function parseFinite(v: unknown): number | undefined {
   return undefined;
 }
 
+export function getVerifiedExchangeMultipliers(
+  symbol: string,
+  contractsForRange: number[],
+): number[] {
+  // Deriv's `contracts_for` returns a generic [100,200,300,500,800] for Crypto/FX/Gold,
+  // whereas live `proposal` enforces exact per-asset ranges (verified via live flight-check).
+  if (symbol === 'cryBTCUSD') return [50, 100, 150, 200, 300];
+  if (symbol === 'cryETHUSD') return [50, 75, 100, 150, 200];
+  if (symbol.startsWith('frx')) return [50, 100, 150, 250, 500];
+  return contractsForRange;
+}
+
 export function pickClosestMultiplier(
   supported: number[],
   preferred: number,
@@ -98,9 +108,19 @@ export function pickClosestMultiplier(
 ): number {
   if (supported.length === 0) return fallback;
   if (supported.includes(preferred)) return preferred;
+  // Pick the nearest valid exchange multiplier (breaking ties conservatively downward
+  // so e.g. 300x snaps to 250x, NEVER dangerously up to 500x).
   const sorted = [...supported].sort((a, b) => a - b);
-  const ge = sorted.find((m) => m >= preferred);
-  return ge ?? sorted[0] ?? fallback;
+  let best = sorted[0];
+  let bestDist = Math.abs(best - preferred);
+  for (const m of sorted) {
+    const dist = Math.abs(m - preferred);
+    if (dist < bestDist) {
+      best = m;
+      bestDist = dist;
+    }
+  }
+  return best ?? fallback;
 }
 
 export class QuantServerRunner {
@@ -129,6 +149,7 @@ export class QuantServerRunner {
   private accountId: string | null = null;
   private accountType: 'demo' | 'real' | null = null;
   private balance = 0;
+  private peakBalance = 0;
   private currency = 'USD';
 
   private armed = false;
@@ -145,6 +166,7 @@ export class QuantServerRunner {
   private readonly rulesCache = new Map<string, SymbolMultiplierRule>();
   private readonly peakRByContract = new Map<number, number>();
   private readonly armedStageByContract = new Map<number, number>();
+  private readonly serverStopUpdatedContracts = new Set<number>();
   private readonly sellingContracts = new Set<number>();
   private openPositionsCount = 0;
   private readonly recentLogs: ServerAuditEntry[] = [];
@@ -272,11 +294,15 @@ export class QuantServerRunner {
     this.accountId = demo.account_id;
     this.accountType = demo.account_type;
     this.balance = demo.balance;
+    if (this.balance > this.peakBalance) {
+      this.peakBalance = this.balance;
+    }
     this.currency = demo.currency || 'USD';
     this.lastError = null;
   }
 
   getStatus(): ServerRunnerStatus {
+    const cppi = computeCppiRiskMultiplier(this.balance, this.peakBalance);
     return {
       available: this.isAvailable(),
       armed: this.armed,
@@ -285,6 +311,9 @@ export class QuantServerRunner {
       accountId: this.accountId,
       accountType: this.accountType,
       balance: this.balance,
+      peakBalance: this.peakBalance,
+      cppiMultiplier: cppi.multiplier,
+      portfolioDrawdownPct: cppi.drawdownPct,
       currency: this.currency,
       timeframe: this.timeframe,
       riskPct: this.riskPct,
@@ -493,6 +522,7 @@ export class QuantServerRunner {
             if (norm && norm.isSold) {
               this.peakRByContract.delete(norm.contractId);
               this.armedStageByContract.delete(norm.contractId);
+              this.serverStopUpdatedContracts.delete(norm.contractId);
               this.sellingContracts.delete(norm.contractId);
 
               void saveQuantTrade({
@@ -633,7 +663,10 @@ export class QuantServerRunner {
       }
     }
 
-    const sortedMults = Array.from(multSet).sort((a, b) => a - b);
+    const sortedMults = getVerifiedExchangeMultipliers(
+      symbol,
+      Array.from(multSet).sort((a, b) => a - b),
+    );
     const rule: SymbolMultiplierRule = {
       supportsMultipliers: multEntries.length > 0 && sortedMults.length > 0,
       multiplierRange: sortedMults,
@@ -681,6 +714,7 @@ export class QuantServerRunner {
     if (norm.isSold || norm.buyPrice <= 0) {
       this.peakRByContract.delete(norm.contractId);
       this.armedStageByContract.delete(norm.contractId);
+      this.serverStopUpdatedContracts.delete(norm.contractId);
       this.sellingContracts.delete(norm.contractId);
       return false;
     }
@@ -711,6 +745,31 @@ export class QuantServerRunner {
         `Profit-Ratchet Stage ${ratchet.stage} ARMED on ${norm.underlyingSymbol} (#${norm.contractId}): floating peak +${(peakR * 100).toFixed(1)}% reached -> locked +${(ratchet.floorR * 100).toFixed(0)}% profit floor.`,
         { symbol: norm.underlyingSymbol, timeframe: engine },
       );
+
+      // Push native server-side disaster stop-loss via Deriv `contract_update` once Stage 1+ arms
+      // so even if the server disconnects, Deriv prevents a full -100% round-trip loss.
+      if (!this.serverStopUpdatedContracts.has(norm.contractId) && norm.buyPrice >= 2) {
+        this.serverStopUpdatedContracts.add(norm.contractId);
+        const disasterStopLoss = Number(Math.max(1, norm.buyPrice * 0.05).toFixed(2));
+        void this.request(
+          {
+            contract_update: 1,
+            contract_id: norm.contractId,
+            limit_order: { stop_loss: disasterStopLoss },
+          },
+          8_000,
+        )
+          .then(() => {
+            this.pushLog(
+              'info',
+              `Deriv Server Stop-Loss synced via contract_update on ${norm.underlyingSymbol} (#${norm.contractId}): max disaster loss capped at $${disasterStopLoss.toFixed(2)}.`,
+              { symbol: norm.underlyingSymbol, timeframe: engine },
+            );
+          })
+          .catch(() => {
+            // Non-fatal: real-time WS profit-ratchet still enforces exact +floorR exit
+          });
+      }
     }
 
     if (
@@ -836,6 +895,7 @@ export class QuantServerRunner {
               market: item.market,
               bars,
               accountBalance: this.balance,
+              peakAccountBalance: this.peakBalance,
               positions,
               stakeLimits: { min: rule.minStake, max: rule.maxStake },
               riskPctOfBalance: this.riskPct,

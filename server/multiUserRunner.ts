@@ -27,14 +27,8 @@ const BASKET_1H = [
   { code: 'cryBTCUSD', name: 'BTC/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'cryETHUSD', name: 'ETH/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'frxXAUUSD', name: 'Gold XAU/USD', market: 'commodities', engine: '1h' as const },
-  { code: 'frxXAGUSD', name: 'Silver XAG/USD', market: 'commodities', engine: '1h' as const },
   { code: 'frxUSDCHF', name: 'USD/CHF', market: 'forex', engine: '1h' as const },
   { code: 'frxUSDJPY', name: 'USD/JPY', market: 'forex', engine: '1h' as const },
-  { code: 'frxGBPJPY', name: 'GBP/JPY', market: 'forex', engine: '1h' as const },
-  { code: 'frxAUDJPY', name: 'AUD/JPY', market: 'forex', engine: '1h' as const },
-  { code: 'frxEURUSD', name: 'EUR/USD', market: 'forex', engine: '1h' as const },
-  { code: 'frxGBPUSD', name: 'GBP/USD', market: 'forex', engine: '1h' as const },
-  { code: 'frxGBPAUD', name: 'GBP/AUD', market: 'forex', engine: '1h' as const },
 ];
 
 interface SymbolMultiplierRule {
@@ -88,7 +82,7 @@ function sendWsRequest<T = any>(
   });
 }
 
-function extractMultiplierRule(payload: unknown): SymbolMultiplierRule {
+function extractMultiplierRule(symbol: string, payload: unknown): SymbolMultiplierRule {
   const available = Array.isArray((payload as any)?.contracts_for?.available)
     ? ((payload as any).contracts_for.available as any[])
     : [];
@@ -113,7 +107,10 @@ function extractMultiplierRule(payload: unknown): SymbolMultiplierRule {
     if (cMin !== undefined) minStake = minStake === undefined ? cMin : Math.max(minStake, cMin);
     if (cMax !== undefined) maxStake = maxStake === undefined ? cMax : Math.min(maxStake, cMax);
   }
-  const multiplierRange = Array.from(rangeSet).sort((a, b) => a - b);
+  let multiplierRange = Array.from(rangeSet).sort((a, b) => a - b);
+  if (symbol === 'cryBTCUSD') multiplierRange = [50, 100, 150, 200, 300];
+  else if (symbol === 'cryETHUSD') multiplierRange = [50, 75, 100, 150, 200];
+  else if (symbol.startsWith('frx')) multiplierRange = [50, 100, 150, 250, 500];
   return {
     supportsMultipliers: true,
     multiplierRange,
@@ -279,7 +276,7 @@ export class MultiUserQuantManager {
       const key = `${symbol}:${timeframe}`;
       if (this.lastBarSignaled.get(key) === barTime) return null;
 
-      const rule = extractMultiplierRule(cfRes);
+      const rule = extractMultiplierRule(symbol, cfRes);
       if (!rule.supportsMultipliers) return null;
 
       const sig = evaluateQuantSignal({

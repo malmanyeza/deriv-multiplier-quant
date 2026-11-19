@@ -69,6 +69,9 @@ interface ServerRunnerSnapshot {
   recentLogs: BotAuditEntry[];
   timeframe: QuantTimeframe;
   riskPct: number;
+  peakBalance?: number;
+  cppiMultiplier?: number;
+  portfolioDrawdownPct?: number;
 }
 
 interface BotAuditEntry {
@@ -97,14 +100,8 @@ const BASKET_1H = [
   { code: 'cryBTCUSD', name: 'BTC/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'cryETHUSD', name: 'ETH/USD', market: 'cryptocurrency', engine: '1h' as const },
   { code: 'frxXAUUSD', name: 'Gold/USD', market: 'commodities', engine: '1h' as const },
-  { code: 'frxXAGUSD', name: 'Silver/USD', market: 'commodities', engine: '1h' as const },
   { code: 'frxUSDCHF', name: 'USD/CHF', market: 'forex', engine: '1h' as const },
   { code: 'frxUSDJPY', name: 'USD/JPY', market: 'forex', engine: '1h' as const },
-  { code: 'frxGBPJPY', name: 'GBP/JPY', market: 'forex', engine: '1h' as const },
-  { code: 'frxAUDJPY', name: 'AUD/JPY', market: 'forex', engine: '1h' as const },
-  { code: 'frxEURUSD', name: 'EUR/USD', market: 'forex', engine: '1h' as const },
-  { code: 'frxGBPUSD', name: 'GBP/USD', market: 'forex', engine: '1h' as const },
-  { code: 'frxGBPAUD', name: 'GBP/AUD', market: 'forex', engine: '1h' as const },
 ];
 
 const BASKET_DUAL = [...BASKET_15M, ...BASKET_1H];
@@ -838,8 +835,34 @@ export const QuantStrategyLab: React.FC<QuantStrategyLabProps> = ({
         </div>
 
         <div className="quant-compact-stats tabular">
-          <span className="quant-stat-item">
-            Risk <strong>{evaluation.riskPlan.openRiskR}/3R</strong>
+          <span className="quant-stat-item" title="Active open slots across WF-11 portfolio">
+            Slots <strong>{evaluation.riskPlan.openRiskR}/8</strong>
+          </span>
+          <span
+            className="quant-stat-item"
+            title={`Correlated cluster cap (${evaluation.riskPlan.riskCluster})`}
+          >
+            {evaluation.riskPlan.riskCluster}{' '}
+            <strong>{evaluation.riskPlan.clusterOpenCount}/2</strong>
+          </span>
+          <span
+            className="quant-stat-item"
+            title={
+              serverStatus?.peakBalance
+                ? `CPPI Drawdown Governor (Peak: ${serverStatus.peakBalance.toFixed(2)} ${currency}, DD: -${(serverStatus.portfolioDrawdownPct ?? 0).toFixed(1)}%)`
+                : 'CPPI Drawdown Governor (scales risk down >10% DD)'
+            }
+          >
+            CPPI{' '}
+            <strong
+              className={
+                (serverStatus?.cppiMultiplier ?? evaluation.riskPlan.cppiMultiplier) < 1
+                  ? 'text-down'
+                  : 'text-up'
+              }
+            >
+              {(serverStatus?.cppiMultiplier ?? evaluation.riskPlan.cppiMultiplier).toFixed(2)}x
+            </strong>
           </span>
           <span className="quant-stat-item">
             Today{' '}
