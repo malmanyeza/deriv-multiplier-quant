@@ -9,6 +9,7 @@ import {
   type ArmedDerivConnection,
 } from './platformStore.js';
 import { logBotAudit, saveQuantTrade } from './supabaseClient.js';
+import { pickClosestMultiplier } from './quantRunner.js';
 import {
   evaluateQuantSignal,
   getSymbolStrategyProfile,
@@ -114,9 +115,11 @@ function extractMultiplierRule(symbol: string, payload: unknown): SymbolMultipli
     if (cMax !== undefined) maxStake = maxStake === undefined ? cMax : Math.min(maxStake, cMax);
   }
   let multiplierRange = Array.from(rangeSet).sort((a, b) => a - b);
-  if (symbol === 'cryBTCUSD') multiplierRange = [50, 100, 150, 200, 300];
-  else if (symbol === 'cryETHUSD') multiplierRange = [50, 75, 100, 150, 200];
-  else if (symbol.startsWith('frx')) multiplierRange = [50, 100, 150, 250, 500];
+  if (multiplierRange.length === 0) {
+    if (symbol.startsWith('1HZ')) multiplierRange = [40, 100, 200, 300, 400];
+    else if (symbol.startsWith('R_')) multiplierRange = [50, 100, 200, 300, 500];
+    else multiplierRange = [100, 200, 300, 500, 800];
+  }
   return {
     supportsMultipliers: true,
     multiplierRange,
@@ -204,7 +207,6 @@ export class MultiUserQuantManager {
       const need1h = boundary1h !== this.last1hBoundary;
       if (!need15m && !need1h) return;
 
-      const ws = await this.ensurePublicWs();
       const signals: Array<{
         symbol: string;
         market: string;
@@ -220,7 +222,7 @@ export class MultiUserQuantManager {
       if (need15m) {
         this.last15mBoundary = boundary15m;
         for (const item of BASKET_15M) {
-          const sig = await this.evaluateSymbol(ws, item.code, item.market, '15m', 900);
+          const sig = await this.evaluateSymbol(item.code, item.market, '15m', 900);
           if (sig) signals.push(sig);
           await new Promise((r) => setTimeout(r, 180));
         }
@@ -229,7 +231,7 @@ export class MultiUserQuantManager {
       if (need1h) {
         this.last1hBoundary = boundary1h;
         for (const item of BASKET_1H) {
-          const sig = await this.evaluateSymbol(ws, item.code, item.market, '1h', 3600);
+          const sig = await this.evaluateSymbol(item.code, item.market, '1h', 3600);
           if (sig) signals.push(sig);
           await new Promise((r) => setTimeout(r, 180));
         }
@@ -252,13 +254,13 @@ export class MultiUserQuantManager {
   }
 
   private async evaluateSymbol(
-    ws: WebSocket,
     symbol: string,
     market: string,
     timeframe: '15m' | '1h',
     granularity: number,
   ) {
     try {
+      const ws = await this.ensurePublicWs();
       const [histRes, cfRes] = await Promise.all([
         sendWsRequest(ws, {
           ticks_history: symbol,
@@ -297,9 +299,11 @@ export class MultiUserQuantManager {
       if (sig.signalDirection === 'rise' || sig.signalDirection === 'fall') {
         this.lastBarSignaled.set(key, barTime);
         const profile = getSymbolStrategyProfile(symbol);
-        const mult = rule.multiplierRange.includes(sig.riskPlan.recommendedMultiplier)
-          ? sig.riskPlan.recommendedMultiplier
-          : rule.defaultMultiplier;
+        const mult = pickClosestMultiplier(
+          rule.multiplierRange,
+          sig.riskPlan.recommendedMultiplier,
+          rule.defaultMultiplier,
+        );
         return {
           symbol,
           market,

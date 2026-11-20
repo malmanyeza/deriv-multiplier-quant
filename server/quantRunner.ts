@@ -99,12 +99,14 @@ export function getVerifiedExchangeMultipliers(
   symbol: string,
   contractsForRange: number[],
 ): number[] {
-  // Deriv's `contracts_for` returns a generic [100,200,300,500,800] for Crypto/FX/Gold,
-  // whereas live `proposal` enforces exact per-asset ranges (verified via live flight-check).
-  if (symbol === 'cryBTCUSD') return [50, 100, 150, 200, 300];
-  if (symbol === 'cryETHUSD') return [50, 75, 100, 150, 200];
-  if (symbol.startsWith('frx')) return [50, 100, 150, 250, 500];
-  return contractsForRange;
+  // Use exact exchange multipliers returned by Deriv's `contracts_for`.
+  if (Array.isArray(contractsForRange) && contractsForRange.length > 0) {
+    return contractsForRange;
+  }
+  // Robust fallback defaults based on live verified Deriv contract rules
+  if (symbol.startsWith('1HZ')) return [40, 100, 200, 300, 400];
+  if (symbol.startsWith('R_')) return [50, 100, 200, 300, 500];
+  return [100, 200, 300, 500, 800];
 }
 
 export function pickClosestMultiplier(

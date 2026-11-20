@@ -234,7 +234,7 @@ export interface SymbolStrategyProfile {
 export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile {
   if (symbol === 'cryBTCUSD') {
     return {
-      commissionPer100Stake: 11.14, // Verified live Deriv 150x proposal fee
+      commissionPer100Stake: 6.7, // Verified live Deriv 200x proposal fee
       longBiasOnly: false,
       pureTrendOnly: true,
       donchianLookback: 36,
@@ -249,15 +249,15 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
         [1.2, 0.6],
       ],
       ratchetStages1h: [[0.8, 0.2]],
-      recommendedMultiplier15m: 50,
-      recommendedMultiplier1h: 150, // Phase 6 Peak-Multiplier: +58R 1Y (PF 3.32) & +70.6R 4Y OOS!
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 200, // Exact valid Deriv exchange multiplier
       convictionWeight: 4.8 / 3.0, // Elite 7 Alpha-Weighted Kelly: 4.80% stake at 3.0% base risk
       sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'cryETHUSD') {
     return {
-      commissionPer100Stake: 18.7, // Verified live Deriv 150x proposal fee
+      commissionPer100Stake: 13.7, // Verified live Deriv 200x proposal fee
       longBiasOnly: false,
       pureTrendOnly: true,
       donchianLookback: 48,
@@ -272,15 +272,15 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
         [1.2, 0.6],
       ],
       ratchetStages1h: [[0.8, 0.2]],
-      recommendedMultiplier15m: 50,
-      recommendedMultiplier1h: 150, // Phase 6 Peak-Multiplier: +29R 1Y (PF 2.32) & +33.1R 4Y OOS
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 200, // Exact valid Deriv exchange multiplier
       convictionWeight: 3.8 / 3.0, // Elite 7 Alpha-Weighted Kelly: 3.80% stake at 3.0% base risk
       sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'frxXAUUSD') {
     return {
-      commissionPer100Stake: 4.47, // Verified live Deriv 250x proposal fee
+      commissionPer100Stake: 4.1, // Verified live Deriv 200x proposal fee
       longBiasOnly: true,
       pureTrendOnly: true,
       donchianLookback: 72,
@@ -295,15 +295,15 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
         [1.2, 0.6],
       ],
       ratchetStages1h: [],
-      recommendedMultiplier15m: 50,
-      recommendedMultiplier1h: 250, // Exact valid Deriv exchange multiplier
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 200, // Exact valid Deriv exchange multiplier
       convictionWeight: 4.8 / 3.0, // Elite 7 Alpha-Weighted Kelly: 4.80% stake at 3.0% base risk
       sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'frxXAGUSD') {
     return {
-      commissionPer100Stake: 2.5,
+      commissionPer100Stake: 19.5, // Verified live Deriv 200x proposal fee
       longBiasOnly: false,
       pureTrendOnly: true,
       donchianLookback: 24,
@@ -318,15 +318,15 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
         [1.2, 0.6],
       ],
       ratchetStages1h: [[0.8, 0.2]],
-      recommendedMultiplier15m: 40,
-      recommendedMultiplier1h: 100,
+      recommendedMultiplier15m: 100,
+      recommendedMultiplier1h: 100, // Exact valid Deriv exchange multiplier
       convictionWeight: 3.2 / 3.0,
       sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'frxUSDCHF') {
     return {
-      commissionPer100Stake: 7.5, // Verified live Deriv 250x proposal fee
+      commissionPer100Stake: 7.2, // Verified live Deriv 200x proposal fee
       longBiasOnly: false,
       pureTrendOnly: false,
       donchianLookback: 24,
@@ -342,14 +342,14 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       ],
       ratchetStages1h: [[0.8, 0.2]],
       recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 250, // Phase 6 Peak-Multiplier: +8.8R 1Y (WR 67.6%, PF 1.95)
+      recommendedMultiplier1h: 200, // Exact valid Deriv exchange multiplier
       convictionWeight: 3.8 / 3.0, // Elite 7 Alpha-Weighted Kelly
       sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'frxUSDJPY') {
     return {
-      commissionPer100Stake: 7.29, // Verified live Deriv 250x proposal fee
+      commissionPer100Stake: 5.7, // Verified live Deriv 200x proposal fee
       longBiasOnly: false,
       pureTrendOnly: false,
       donchianLookback: 72,
@@ -365,14 +365,14 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       ],
       ratchetStages1h: [],
       recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 250, // Phase 6 Peak-Multiplier: +6.6R 1Y (PF 1.40) & +1.3R 4Y OOS
+      recommendedMultiplier1h: 200, // Exact valid Deriv exchange multiplier
       convictionWeight: 3.5 / 3.0,
       sessionFilterLondonNy: true,
     };
   }
   if (symbol === 'frxGBPJPY') {
     return {
-      commissionPer100Stake: 5.95, // Verified live Deriv 250x proposal fee
+      commissionPer100Stake: 4.8, // Verified live Deriv 200x proposal fee
       longBiasOnly: false,
       pureTrendOnly: false,
       donchianLookback: 72,
@@ -388,14 +388,14 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       ],
       ratchetStages1h: [],
       recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 250,
+      recommendedMultiplier1h: 200, // Exact valid Deriv exchange multiplier
       convictionWeight: 3.2 / 3.0,
       sessionFilterLondonNy: true,
     };
   }
   if (symbol === 'frxAUDJPY') {
     return {
-      commissionPer100Stake: 9.38, // Verified live Deriv 250x proposal fee
+      commissionPer100Stake: 7.5, // Verified live Deriv 200x proposal fee
       longBiasOnly: false,
       pureTrendOnly: true,
       donchianLookback: 72,
@@ -411,14 +411,14 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       ],
       ratchetStages1h: [[0.8, 0.2]],
       recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 250,
+      recommendedMultiplier1h: 200, // Exact valid Deriv exchange multiplier
       convictionWeight: 3.0 / 3.0,
       sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'frxEURUSD') {
     return {
-      commissionPer100Stake: 2.99, // Verified live Deriv 150x proposal fee
+      commissionPer100Stake: 4.8, // Verified live Deriv 200x proposal fee
       longBiasOnly: false,
       pureTrendOnly: false,
       donchianLookback: 24,
@@ -434,14 +434,14 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       ],
       ratchetStages1h: [[0.8, 0.2]],
       recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 150,
+      recommendedMultiplier1h: 200, // Exact valid Deriv exchange multiplier
       convictionWeight: 2.2 / 3.0, // Phase 1 Kelly trim: low-beta range-bound FX
       sessionFilterLondonNy: true,
     };
   }
   if (symbol === 'frxGBPUSD') {
     return {
-      commissionPer100Stake: 5.08, // Verified live Deriv 250x proposal fee
+      commissionPer100Stake: 4.1, // Verified live Deriv 200x proposal fee
       longBiasOnly: false,
       pureTrendOnly: false,
       donchianLookback: 48,
@@ -457,14 +457,14 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       ],
       ratchetStages1h: [],
       recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 250,
+      recommendedMultiplier1h: 200, // Exact valid Deriv exchange multiplier
       convictionWeight: 2.8 / 3.0,
       sessionFilterLondonNy: false,
     };
   }
   if (symbol === 'frxGBPAUD') {
     return {
-      commissionPer100Stake: 5.33, // Verified live Deriv 250x proposal fee
+      commissionPer100Stake: 4.3, // Verified live Deriv 200x proposal fee
       longBiasOnly: false,
       pureTrendOnly: true,
       donchianLookback: 24,
@@ -480,7 +480,7 @@ export function getSymbolStrategyProfile(symbol: string): SymbolStrategyProfile 
       ],
       ratchetStages1h: [[0.8, 0.2]],
       recommendedMultiplier15m: 100,
-      recommendedMultiplier1h: 250,
+      recommendedMultiplier1h: 200, // Exact valid Deriv exchange multiplier
       convictionWeight: 2.8 / 3.0,
       sessionFilterLondonNy: false,
     };
